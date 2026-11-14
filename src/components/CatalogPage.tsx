@@ -96,7 +96,7 @@ export default function CatalogPage({ robots, loading, error, onOpenRobot }: Pro
             <span className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center">
               <Bot className="text-white" size={20} />
             </span>
-            <span className="font-display font-bold text-xl tracking-tight">Rent-a-Bot</span>
+            <span className="font-display font-bold text-xl tracking-tight">Rent-A-Robot</span>
           </a>
           <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
             <a href="#catalog" className="px-3 py-2 rounded-lg text-ink-600 hover:text-ink-900 hover:bg-ink-50 transition-colors">Browse robots</a>
@@ -275,11 +275,11 @@ export default function CatalogPage({ robots, loading, error, onOpenRobot }: Pro
               <Bot className="text-white" size={20} />
             </span>
             <div>
-              <p className="font-display font-bold text-white">Rent-a-Bot</p>
+              <p className="font-display font-bold text-white">Rent-A-Robot</p>
               <p className="text-xs text-ink-400">Robots for work and home, by the day.</p>
             </div>
           </div>
-          <p className="text-xs text-ink-400">© 2026 Rent-a-Bot Inc. Delivery, insurance and support included on every rental.</p>
+          <p className="text-xs text-ink-400">© 2026 Rent-A-Robot Inc. Delivery, insurance and support included on every rental.</p>
         </div>
       </footer>
     </div>

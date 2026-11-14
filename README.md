@@ -1,4 +1,4 @@
-# Rent A Robot — Robot Rental Platform
+# Rent-A-Robot — Robot Rental Platform
 
 A commercial and residential robot rental platform. Customers browse a fleet of robots (humanoids, welding arms, warehouse AMRs, inspection quadrupeds, robot vacuums, companion robots), compare daily/weekly pricing, book rentals with instant quotes, and look up their bookings by email.
 
