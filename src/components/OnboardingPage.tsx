@@ -8,7 +8,6 @@ import {
   Languages,
   Mail,
   MapPin,
-  Settings2,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -237,7 +236,7 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                   />
                   <DropdownField label="Team size" value={teamSizeLabel(form.team_size)} onChange={(value) => update('team_size', teamSizeFromLabel(value))} options={teamSizeOptions.map((option) => [option, option])} />
                   {isBusiness && (
-                    <div className="grid sm:grid-cols-2 gap-3 rounded-2xl border border-ink-200 p-3.5">
+                    <div className="grid sm:col-span-2 gap-3 rounded-2xl border border-ink-200 p-3.5">
                       <Field label="Legal business name" value={form.legal_business_name ?? ''} onChange={(value) => update('legal_business_name', value)} placeholder="Rivera Home Services LLC" required />
                       <Field label="Owner or authorized representative" value={form.owner_representative_name ?? ''} onChange={(value) => update('owner_representative_name', value)} placeholder="Jordan Rivera" required />
                       <div className="sm:col-span-2">
@@ -265,22 +264,9 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                   <div className="grid sm:grid-cols-2 gap-3">
                     <Field label="Home or business ZIP code" value={form.home_zip} onChange={(value) => update('home_zip', value)} placeholder="94107" required />
                     <Field label="Cities or ZIP codes served" value={form.service_area_zips.join(', ')} onChange={(value) => update('service_area_zips', value.split(',').map((area) => area.trim()).filter(Boolean))} placeholder="94107, 94110, San Francisco" required hint="Separate multiple areas with commas." />
-                    <DropdownField
-                      label="Rate display"
-                      value={form.rates_include_platform_fee ? 'after-fee' : 'before-fee'}
-                      onChange={(value) => update('rates_include_platform_fee', value === 'after-fee')}
-                      options={[['before-fee', 'Before service fee'], ['after-fee', 'After service fee']]}
-                    />
-                    <DropdownField
-                      label="Own cleaning equipment?"
-                      value={form.owned_equipment ? 'yes' : 'not-yet'}
-                      onChange={(value) => update('owned_equipment', value === 'yes')}
-                      options={[['yes', 'Yes'], ['not-yet', 'Not yet']]}
-                      icon={<Settings2 size={15} />}
-                    />
                   </div>
                   <DropdownField
-                    label="Experience operating automated equipment"
+                    label="Experience operating robotic cleaning equipment"
                     value={form.automation_experience}
                     onChange={(value) => update('automation_experience', value)}
                     options={[['none', 'New to automated equipment'], ['some', 'Some hands-on experience'], ['experienced', 'Experienced operator']]}
