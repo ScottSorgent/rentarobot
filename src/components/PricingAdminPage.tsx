@@ -419,7 +419,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                       <SelectField
                         label="Distribution hub"
                         value={draft.hub_id ?? ''}
-                        options={[[ '', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
+                        options={[['', 'Unassigned'], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
                         onChange={(v) => updateDraft('hub_id', v || null)}
                       />
                       <label className="flex items-center gap-2 text-sm">
@@ -583,7 +583,12 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function NumberField({ label, value, onChange, step, nullable }: { label: string; value: number | ''; onChange: (v: number | '') => void; step?: string; nullable?: boolean }) {
+type NumberFieldProps =
+  | { label: string; value: number | ''; step?: string; nullable?: false; onChange: (v: number) => void }
+  | { label: string; value: number | ''; step?: string; nullable: true; onChange: (v: number | '') => void };
+
+function NumberField({ label, value, step, nullable, onChange }: NumberFieldProps) {
+  const emit = onChange as (v: number | '') => void;
   return (
     <label className="block">
       <span className="text-xs font-semibold text-ink-600 mb-1 block">{label}</span>
@@ -591,7 +596,7 @@ function NumberField({ label, value, onChange, step, nullable }: { label: string
         type="number"
         step={step ?? '0.01'}
         value={value}
-        onChange={(e) => onChange(e.target.value === '' ? (nullable ? '' : 0) : Number(e.target.value))}
+        onChange={(e) => emit(e.target.value === '' ? (nullable ? '' : 0) : Number(e.target.value))}
         className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
       />
     </label>

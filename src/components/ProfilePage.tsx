@@ -250,7 +250,7 @@ export default function ProfilePage({
                 />
                 <Detail
                   label="Equipment experience"
-                  value={experienceLabels[profile.automation_experience] ?? profile.automation_experience ?? 'Not set yet'}
+                  value={experienceLabels[profile.automation_experience ?? ''] ?? profile.automation_experience ?? 'Not set yet'}
                   icon={<Bot size={15} />}
                 />
               </dl>

@@ -1,4 +1,4 @@
-import { Home, LogOut, PackageCheck, User } from 'lucide-react';
+import { Bot, Home, LogOut, PackageCheck, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface Props {
