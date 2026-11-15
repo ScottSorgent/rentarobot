@@ -1,4 +1,4 @@
-import { Bot, Home, LogOut, Menu, PackageCheck, User, X } from 'lucide-react';
+import { Home, LogOut, PackageCheck, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface Props {
@@ -11,7 +11,6 @@ interface Props {
 }
 
 export default function AppHeader({ userEmail, active, onHome, onBrowse, onBookings, onSignOut }: Props) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +34,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onBooki
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <a
           href="#"
-          className="flex items-center gap-2.5 shrink-0"
+          className="hidden md:flex items-center gap-2.5 shrink-0"
           onClick={(e) => {
             e.preventDefault();
             onHome();
@@ -74,10 +73,16 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onBooki
           </button>
         </nav>
 
-        <div className="hidden md:block" ref={accountRef}>
+        <div className="ml-auto" ref={accountRef}>
           <button
             onClick={() => setAccountOpen((v) => !v)}
-            className="inline-flex items-center gap-2 bg-ink-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-ink-800 transition-colors"
+            className="md:hidden inline-flex items-center gap-2 bg-ink-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-ink-800 transition-colors"
+          >
+            <User size={16} /> Account
+          </button>
+          <button
+            onClick={() => setAccountOpen((v) => !v)}
+            className="hidden md:inline-flex items-center gap-2 bg-ink-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-ink-800 transition-colors"
           >
             <User size={16} /> Account
           </button>
@@ -103,46 +108,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onBooki
           )}
         </div>
 
-        <button
-          className="md:hidden p-2 rounded-lg hover:bg-ink-100 transition-colors"
-          onClick={() => setMenuOpen((v) => !v)}
-          aria-label="Toggle menu"
-        >
-          {menuOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
       </div>
-
-      {menuOpen && (
-        <nav className="md:hidden border-t border-ink-100 bg-white px-4 py-3 flex flex-col gap-1 text-sm font-medium animate-fade-in">
-          {navItems.map((item) => {
-            const isActive = active === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => { setMenuOpen(false); item.onClick(); }}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-colors ${
-                  isActive ? 'text-brand-700 bg-brand-50 font-semibold' : 'text-ink-700 hover:bg-ink-50'
-                }`}
-              >
-                <item.icon size={16} /> {item.label}
-              </button>
-            );
-          })}
-          <button
-            onClick={() => { setMenuOpen(false); onBookings(); }}
-            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-ink-700 hover:bg-ink-50"
-          >
-            <PackageCheck size={16} /> My bookings
-          </button>
-          <button
-            onClick={() => { setMenuOpen(false); onSignOut(); }}
-            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-red-600 hover:bg-red-50"
-          >
-            <LogOut size={16} /> Sign out
-          </button>
-        </nav>
-      )}
     </header>
   );
 }

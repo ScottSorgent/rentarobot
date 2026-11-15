@@ -9,6 +9,7 @@ import RobotDetailPage from '@/components/RobotDetailPage';
 import RentedRobotGuidePage from '@/components/RentedRobotGuidePage';
 import RentedRobotsPage from '@/components/RentedRobotsPage';
 import BookingsPage from '@/components/BookingsPage';
+import HandoffPage from '@/components/HandoffPage';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import WelcomePage from '@/components/WelcomePage';
 import { supabase } from '@/lib/supabase';
@@ -26,7 +27,7 @@ import {
 import { DEFAULT_SETTINGS, type Hub, type PricingSettings, type RobotPricing } from '@/lib/pricing';
 import type { Booking, NewBooking, ProviderProfile, Robot } from '@/lib/types';
 
-type View = 'home' | 'catalog' | 'detail' | 'bookings' | 'profile' | 'rented' | 'rentedGuide' | 'pricingAdmin';
+type View = 'home' | 'catalog' | 'detail' | 'bookings' | 'handoff' | 'profile' | 'rented' | 'rentedGuide' | 'pricingAdmin';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -269,6 +270,13 @@ export default function App() {
     window.scrollTo({ top: 0 });
   }
 
+  function openHandoff(booking: Booking, robot: Robot) {
+    setSelected(robot);
+    setSelectedBooking(booking);
+    setView('handoff');
+    window.scrollTo({ top: 0 });
+  }
+
   function openPricingAdmin() {
     setView('pricingAdmin');
     window.scrollTo({ top: 0 });
@@ -365,6 +373,21 @@ export default function App() {
     );
   }
 
+  if (view === 'handoff' && selected && selectedBooking) {
+    return (
+      <HandoffPage
+        booking={selectedBooking}
+        robot={selected}
+        lateFeeAmount={pricingSettings.late_fee_amount}
+        lateFeeActive={pricingSettings.late_fee_active}
+        onDone={() => {
+          loadBookings();
+          setView('bookings');
+        }}
+      />
+    );
+  }
+
   if (view === 'bookings') {
     return (
       <>
@@ -376,6 +399,7 @@ export default function App() {
           onBack={goCatalog}
           onBrowse={goCatalog}
           onRetry={loadBookings}
+          onOpenHandoff={openHandoff}
         />
         {mobileNav}
       </>
