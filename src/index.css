@@ -23,4 +23,20 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+  .animate-fade-in {
+    animation: fade-in 0.18s ease-out;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .border-3 {
+    border-width: 3px;
+  }
 }
