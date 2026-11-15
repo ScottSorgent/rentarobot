@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, CalendarCheck, Lock, Mail, Search, ShieldCheck, Truck, User } from 'lucide-react';
+import { ArrowRight, Bot, CalendarCheck, Lock, Mail, Search, ShieldCheck, User } from 'lucide-react';
 import { useState } from 'react';
 
 type Mode = 'welcome' | 'signin' | 'signup' | 'reset';
@@ -23,15 +23,15 @@ const features = [
     title: 'Rent Short-Term or Lease',
     text: 'Book a quick rental for a busy week or choose a monthly lease for a dependable everyday partner.'
   },
-  {
-    icon: Truck,
-    title: 'Delivered to Your Next Job',
-    text: 'Delivery, setup, insurance and a live support line are included so you can focus on your clients.'
-  },
 ];
 
-function Logo({ size = 'lg' }: { size?: 'lg' | 'sm' }) {
-  const box = size === 'lg' ? 'w-20 h-20 rounded-3xl' : 'w-12 h-12 rounded-2xl';
+function Logo({ size = 'lg' }: { size?: 'lg' | 'sm' | 'xl' }) {
+  const box =
+    size === 'xl'
+      ? 'w-24 h-24 sm:w-28 sm:h-28 rounded-3xl'
+      : size === 'lg'
+        ? 'w-20 h-20 rounded-3xl'
+        : 'w-12 h-12 rounded-2xl';
   return (
     <div className={`${box} overflow-hidden shadow-lg shadow-black/30`}>
       <img src="/Glossy_Robot_Calendar_App_Icon.png" alt="" className="w-full h-full object-cover" />
@@ -98,7 +98,7 @@ export default function WelcomePage({ onAuthed }: Props) {
               Back
             </button>
           ) : (
-            <div className="hidden lg:flex items-center gap-3">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setMode('signin')}
                 className="text-sm font-semibold text-white px-5 py-2.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 backdrop-blur transition-colors"
@@ -115,7 +115,7 @@ export default function WelcomePage({ onAuthed }: Props) {
           )}
         </header>
 
-        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pb-16 grid lg:grid-cols-2 gap-12 items-center">
+        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pb-16">
           {mode === 'welcome' ? (
             <WelcomePane onSignIn={() => setMode('signin')} onSignUp={() => setMode('signup')} />
           ) : (
@@ -140,43 +140,31 @@ function WelcomePane({ onSignIn, onSignUp }: { onSignIn: () => void; onSignUp: (
         <h1 className="font-display text-4xl sm:text-5xl font-bold text-white leading-[1.1]">
           Your Cleaning Business, Upgraded
         </h1>
-        <p className="mt-4 text-lg text-ink-300 leading-relaxed max-w-lg">
+        <p className="mt-3 text-base text-ink-300 leading-relaxed max-w-2xl">
           Lease or rent professional cleaning robots that help you finish more homes, protect your energy and grow on your terms.
         </p>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="mt-8 grid sm:grid-cols-3 gap-4 animate-fade-up" style={{ animationDelay: '120ms' }}>
         {features.map((f, i) => (
           <div
             key={f.title}
             style={{ animationDelay: `${120 + i * 80}ms` }}
             className="animate-fade-up bg-white/5 border border-white/10 backdrop-blur rounded-2xl p-5 hover:bg-white/10 transition-colors"
           >
-            <span className="w-10 h-10 rounded-xl bg-brand-500/15 border border-brand-400/20 flex items-center justify-center">
-              <f.icon size={20} className="text-brand-300" />
-            </span>
-            <h3 className="mt-3.5 font-display font-semibold text-white">{f.title}</h3>
+            <div className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-xl bg-brand-500/15 border border-brand-400/20 flex items-center justify-center shrink-0">
+                <f.icon size={20} className="text-brand-300" />
+              </span>
+              <h3 className="font-display font-semibold text-white">{f.title}</h3>
+            </div>
             <p className="mt-1.5 text-sm text-ink-300 leading-relaxed">{f.text}</p>
           </div>
         ))}
       </div>
 
-      <div className="lg:hidden animate-fade-up" style={{ animationDelay: '440ms' }}>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={onSignUp}
-            className="inline-flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-400 text-ink-950 font-semibold px-6 py-3.5 rounded-xl transition-colors"
-          >
-            Create New Account <ArrowRight size={18} />
-          </button>
-          <button
-            onClick={onSignIn}
-            className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3.5 rounded-xl border border-white/20 backdrop-blur transition-colors"
-          >
-            Sign in
-          </button>
-        </div>
-        <p className="mt-4 text-sm text-ink-400">
+      <div className="animate-fade-up" style={{ animationDelay: '240ms' }}>
+        <p className="text-sm text-ink-400">
           Forgot your password?{' '}
           <button onClick={onSignIn} className="text-brand-300 font-semibold hover:text-brand-200 transition-colors">
             Reset it here
@@ -236,7 +224,7 @@ function AuthPane({
   const t = titles[mode];
 
   return (
-    <div className="lg:col-start-2 w-full max-w-md lg:justify-self-end animate-fade-up">
+    <div className="w-full max-w-md mx-auto my-12 animate-fade-up">
       <div className="bg-white rounded-3xl shadow-2xl p-8">
         <h2 className="font-display text-2xl font-bold tracking-tight">{t.heading}</h2>
         <p className="mt-1.5 text-sm text-ink-500">{t.sub}</p>
