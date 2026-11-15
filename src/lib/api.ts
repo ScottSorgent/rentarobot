@@ -152,3 +152,113 @@ export async function applyCatalogRates(
     throw new Error('Could not update catalog prices.');
   }
 }
+
+export interface HandoffDetails {
+  bookingId: string;
+  pickupAt: string;
+  handoffLocation: string;
+  handoffCode: string;
+}
+
+export async function scheduleHandoff(input: HandoffDetails): Promise<void> {
+  const { error } = await supabase
+    .from('bookings')
+    .update({
+      pickup_at: input.pickupAt,
+      handoff_location: input.handoffLocation,
+      handoff_code: input.handoffCode,
+      handoff_status: 'scheduled',
+    })
+    .eq('id', input.bookingId);
+  if (error) throw new Error('Could not schedule the handoff. Please try again.');
+  const { error: eventError } = await supabase.from('handoff_events').insert({
+    booking_id: input.bookingId,
+    event_type: 'scheduled',
+    notes: `Pickup ${input.pickupAt} at ${input.handoffLocation}`,
+  });
+  if (eventError) console.error('handoff event log failed', eventError);
+}
+
+export async function confirmHandoffSide(
+  bookingId: string,
+  side: 'outgoing' | 'incoming',
+  checklist: { checklistDone: boolean; batteryConfirmed: boolean; photoCount: number },
+): Promise<void> {
+  const now = new Date().toISOString();
+  const patch = side === 'outgoing'
+    ? { outgoing_confirmed_at: now, checklist_done: checklist.checklistDone, battery_confirmed: checklist.batteryConfirmed }
+    : { incoming_confirmed_at: now };
+  const { data, error } = await supabase
+    .from('bookings')
+    .update(patch)
+    .eq('id', bookingId)
+    .select('outgoing_confirmed_at, incoming_confirmed_at, handoff_status');
+  if (error) throw new Error('Could not record the confirmation. Please try again.');
+  const row = data?.[0];
+  const bothConfirmed = row?.outgoing_confirmed_at && row?.incoming_confirmed_at;
+  if (bothConfirmed && row?.handoff_status !== 'completed') {
+    const { error: completeError } = await supabase
+      .from('bookings')
+      .update({ handoff_status: 'completed' })
+      .eq('id', bookingId);
+    if (completeError) throw new Error('Could not complete the handoff.');
+    await supabase.from('handoff_events').insert({
+      booking_id: bookingId,
+      event_type: 'custody_transferred',
+      notes: 'Both parties confirmed the transfer.',
+    });
+  } else {
+    await supabase.from('handoff_events').insert({
+      booking_id: bookingId,
+      event_type: side === 'outgoing' ? 'cleaning_confirmed' : 'accepted',
+      notes: `Checklist ${checklist.checklistDone ? 'complete' : 'incomplete'}, battery ${checklist.batteryConfirmed ? 'confirmed' : 'unconfirmed'}, ${checklist.photoCount} photo(s).`,
+    });
+  }
+}
+
+export interface MaintenanceIssue {
+  equipmentRecordId: string | null;
+  bookingId: string | null;
+  issueType: 'battery' | 'brushes' | 'filter' | 'sensor' | 'other';
+  description: string;
+  severity: 'minor' | 'major' | 'unsafe';
+}
+
+export async function reportMaintenanceIssue(issue: MaintenanceIssue): Promise<void> {
+  const { error } = await supabase.from('maintenance_reports').insert({
+    equipment_record_id: issue.equipmentRecordId,
+    booking_id: issue.bookingId,
+    issue_type: issue.issueType,
+    description: issue.description,
+    severity: issue.severity,
+  });
+  if (error) throw new Error('Could not submit the maintenance report. Please try again.');
+}
+
+export async function fetchEquipmentRecords() {
+  const { data, error } = await supabase
+    .from('equipment_records')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error('Could not load the equipment records.');
+  return data ?? [];
+}
+
+export async function fetchMaintenanceReports() {
+  const { data, error } = await supabase
+    .from('maintenance_reports')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error('Could not load maintenance reports.');
+  return data ?? [];
+}
+
+export async function fetchHandoffEvents(bookingId: string) {
+  const { data, error } = await supabase
+    .from('handoff_events')
+    .select('*')
+    .eq('booking_id', bookingId)
+    .order('occurred_at', { ascending: true });
+  if (error) throw new Error('Could not load the handoff history.');
+  return data ?? [];
+}

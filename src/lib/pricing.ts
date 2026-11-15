@@ -1,26 +1,54 @@
 export type DurationType = 'daily' | 'weekly' | 'monthly';
-export type FinancingMethod = 'owned' | 'financed' | 'supplier_leased';
-export type CostCategory = 'residential' | 'prosumer' | 'commercial';
-export type ScenarioName = 'conservative' | 'base' | 'optimistic';
+export type CostCategory = 'residential' | 'prosumer' | 'commercial' | 'window_cleaning';
+
+export interface UtilizationScenarios {
+  u60: number;
+  u70: number;
+  u80: number;
+  u90: number;
+  u100: number;
+}
 
 export interface PricingSettings {
-  marketing_rate: number;
-  target_margin: number;
+  // Percentage-of-revenue costs (payment processing; marketing now modeled
+  // as one-time CAC below, so this defaults to 0).
   processing_pct: number;
   processing_fixed: number;
-  storage_monthly: number;
-  insurance_monthly: number;
+  // Refurb acquisition model defaults (per robot).
+  battery_cost: number;
+  refurbishment_cost: number;
+  useful_life_months: number;
   maintenance_monthly: number;
-  software_monthly: number;
   hosting_monthly: number;
+  insurance_monthly: number;
+  // One-time cost per new customer, allocated across expected bookings.
+  customer_acquisition_cost: number;
+  expected_bookings_per_customer: number;
+  // Optional fallback services (0 in the peer-to-peer model).
+  storage_monthly: number;
   checkout_handling: number;
   return_handling: number;
+  handoff_incentive: number;
+  software_monthly: number;
+  // Utilization scenario grid.
   utilization_base: number;
-  robots_per_hub: number;
+  u60: number;
+  u70: number;
+  u80: number;
+  u90: number;
+  u100: number;
+  // Pricing rules.
   weekly_discount: number;
   monthly_discount: number;
   tax_rate: number;
   avg_booking_days: number;
+  // Late-handoff policy (inactive until legally approved).
+  late_grace_minutes: number;
+  late_warn_minutes: number;
+  late_fee_amount: number;
+  late_fee_active: boolean;
+  target_margin: number;
+  marketing_rate: number;
   verified: boolean;
 }
 
@@ -29,11 +57,14 @@ export interface RobotPricing {
   manufacturer: string;
   model_name: string;
   cost_category: CostCategory;
-  retail_price: number;
+  // Refurb acquisition: total = wholesale (used unit) + battery + refurbishment.
   wholesale_cost: number;
+  battery_cost: number;
+  refurbishment_cost: number;
+  retail_price: number;
   wholesale_source: string;
   wholesale_verified: boolean;
-  financing_method: FinancingMethod;
+  financing_method: 'owned' | 'financed' | 'supplier_leased';
   monthly_payment: number;
   term_months: number;
   rate_pct: number;
@@ -47,6 +78,9 @@ export interface RobotPricing {
   monthly_hosting: number;
   checkout_handling: number;
   return_handling: number;
+  handoff_incentive: number;
+  customer_acquisition_cost: number;
+  expected_bookings_per_customer: number;
   processing_pct: number;
   processing_fixed: number;
   expected_utilization: number;
@@ -70,23 +104,37 @@ export interface Hub {
 }
 
 export const DEFAULT_SETTINGS: PricingSettings = {
-  marketing_rate: 0.20,
-  target_margin: 0.35,
   processing_pct: 0.029,
   processing_fixed: 0.30,
-  storage_monthly: 15,
-  insurance_monthly: 0,
-  maintenance_monthly: 0,
-  software_monthly: 0,
+  battery_cost: 40,
+  refurbishment_cost: 0,
+  useful_life_months: 24,
+  maintenance_monthly: 2,
   hosting_monthly: 2,
-  checkout_handling: 5,
-  return_handling: 5,
+  insurance_monthly: 0,
+  customer_acquisition_cost: 5,
+  expected_bookings_per_customer: 6,
+  storage_monthly: 0,
+  checkout_handling: 0,
+  return_handling: 0,
+  handoff_incentive: 0,
+  software_monthly: 0,
   utilization_base: 0.80,
-  robots_per_hub: 10,
+  u60: 0.6,
+  u70: 0.7,
+  u80: 0.8,
+  u90: 0.9,
+  u100: 1.0,
   weekly_discount: 0.12,
   monthly_discount: 0.25,
   tax_rate: 0,
   avg_booking_days: 7,
+  late_grace_minutes: 15,
+  late_warn_minutes: 30,
+  late_fee_amount: 5,
+  late_fee_active: false,
+  target_margin: 0.5,
+  marketing_rate: 0,
   verified: false,
 };
 
@@ -94,54 +142,76 @@ export function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+// Refurb acquisition total: used unit + new battery + refurb work.
+// The battery is part of the total, never double-counted.
+export function acquisitionTotal(p: Pick<RobotPricing, 'wholesale_cost' | 'battery_cost' | 'refurbishment_cost'>): number {
+  return round2(Math.max(0, p.wholesale_cost) + Math.max(0, p.battery_cost) + Math.max(0, p.refurbishment_cost));
+}
+
 export interface MonthlyCostBreakdown {
   capitalMonthly: number;
   capitalMethod: 'lease payment' | 'financed payment' | 'straight-line depreciation';
+  maintenanceMonthly: number;
+  hostingMonthly: number;
+  insuranceMonthly: number;
+  softwareMonthly: number;
+  storageMonthly: number;
+  cacAllocation: number;
   operatingMonthly: number;
   totalFixedMonthly: number;
+}
+
+// One-time CAC spread over the bookings one customer is expected to make.
+export function cacAllocation(acquisitionCost: number, expectedBookings: number): number {
+  const bookings = Math.max(1, expectedBookings);
+  return round2(Math.max(0, acquisitionCost) / bookings);
 }
 
 export function monthlyFixedCost(p: RobotPricing): MonthlyCostBreakdown {
   let capitalMonthly: number;
   let capitalMethod: MonthlyCostBreakdown['capitalMethod'];
   if (p.financing_method === 'owned') {
-    // Owned units recover cost through depreciation; no lease/financing payment
-    // so principal and depreciation are never double-counted.
-    capitalMonthly = Math.max(0, (p.wholesale_cost - p.residual_value) / Math.max(1, p.useful_life_months));
+    // Depreciation base includes battery + refurbishment; residual excluded.
+    const base = acquisitionTotal(p) - Math.max(0, p.residual_value);
+    capitalMonthly = Math.max(0, base) / Math.max(1, p.useful_life_months);
     capitalMethod = 'straight-line depreciation';
   } else {
     capitalMonthly = Math.max(0, p.monthly_payment);
     capitalMethod = p.financing_method === 'financed' ? 'financed payment' : 'lease payment';
   }
-  const operatingMonthly =
-    p.monthly_storage +
-    p.monthly_insurance +
-    p.monthly_maintenance +
-    p.monthly_software +
-    p.monthly_hosting;
+  const maintenanceMonthly = Math.max(0, p.monthly_maintenance);
+  const hostingMonthly = Math.max(0, p.monthly_hosting);
+  const insuranceMonthly = Math.max(0, p.monthly_insurance);
+  const softwareMonthly = Math.max(0, p.monthly_software);
+  const storageMonthly = Math.max(0, p.monthly_storage);
+  const cac = cacAllocation(p.customer_acquisition_cost, p.expected_bookings_per_customer);
+  const operatingMonthly = maintenanceMonthly + hostingMonthly + insuranceMonthly + softwareMonthly + storageMonthly + cac;
   return {
     capitalMonthly: round2(capitalMonthly),
     capitalMethod,
+    maintenanceMonthly: round2(maintenanceMonthly),
+    hostingMonthly: round2(hostingMonthly),
+    insuranceMonthly: round2(insuranceMonthly),
+    softwareMonthly: round2(softwareMonthly),
+    storageMonthly: round2(storageMonthly),
+    cacAllocation: cac,
     operatingMonthly: round2(operatingMonthly),
     totalFixedMonthly: round2(capitalMonthly + operatingMonthly),
   };
 }
 
-export function utilizationFor(
-  p: RobotPricing,
-  settings: PricingSettings,
-  scenario: ScenarioName,
-): number {
-  const base = p.expected_utilization > 0 ? p.expected_utilization : settings.utilization_base;
-  if (scenario === 'conservative') return round2(Math.max(0, base * 0.6));
-  if (scenario === 'optimistic') return round2(Math.min(1, base * 1.25));
-  return round2(base);
-}
+export const UTILIZATION_LEVELS = [0.6, 0.7, 0.8, 0.9, 1.0] as const;
 
-// Denominator of the required-price formula; floored so prices stay finite
-// even if marketing + processing + margin rates exceed 100%.
-export function marginDenominator(marketingRate: number, processingPct: number, targetMargin: number): number {
-  return Math.max(0.05, 1 - marketingRate - processingPct - targetMargin);
+export function scenarioUtilization(settings: PricingSettings, level: 0.6 | 0.7 | 0.8 | 0.9 | 1.0): number {
+  const map: Record<string, number> = {
+    '0.6': settings.u60,
+    '0.7': settings.u70,
+    '0.8': settings.u80,
+    '0.9': settings.u90,
+    '1': settings.u100,
+  };
+  const v = map[String(level)];
+  return round2(Math.min(1, Math.max(0, v > 0 ? v : level)));
 }
 
 export interface DurationQuote {
@@ -151,10 +221,9 @@ export interface DurationQuote {
   effectiveDaily: number;
   allocatedFixed: number;
   handling: number;
-  usageMaintenance: number;
   processingFixed: number;
   floorPrice: number;
-  discountFromDaily: number;
+  targetPrice: number;
   overrideUsed: boolean;
   belowFloor: boolean;
 }
@@ -165,11 +234,11 @@ export interface RobotQuote {
   monthlyBookings: number;
   avgBookingDays: number;
   quotes: Record<DurationType, DurationQuote>;
+  // Monthly figures at the given utilization (prorated fixed costs).
   monthlyRevenue: number;
   monthlyHandling: number;
-  monthlyUsageMaintenance: number;
+  monthlyAllocatedFixed: number;
   monthlyProcessing: number;
-  monthlyMarketing: number;
   contributionProfit: number;
   contributionMargin: number;
   breakEvenBookings: number;
@@ -179,34 +248,37 @@ export interface RobotQuote {
   deposit: number;
 }
 
+// Denominator of the required-price formula; floored so prices stay finite
+// even if processing + margin rates exceed 100%.
+export function marginDenominator(processingPct: number, targetMargin: number): number {
+  return Math.max(0.05, 1 - processingPct - targetMargin);
+}
+
 export function quoteRobot(
   p: RobotPricing,
   settings: PricingSettings,
-  scenario: ScenarioName = 'base',
+  utilizationOverride?: number,
 ): RobotQuote {
   const breakdown = monthlyFixedCost(p);
-  const utilization = utilizationFor(p, settings, scenario);
+  const utilization = round2(Math.min(1, Math.max(0, utilizationOverride ?? (p.expected_utilization > 0 ? p.expected_utilization : settings.utilization_base))));
   const avgBookingDays = Math.max(1, settings.avg_booking_days);
-  const monthlyBookings = Math.round((30 * utilization) / avgBookingDays);
+  const monthlyBookings = Math.max(0, (30 * utilization) / avgBookingDays);
 
-  const perBookingHandling = p.checkout_handling + p.return_handling;
-  const maintBase = p.expected_monthly_bookings > 0 ? p.expected_monthly_bookings : Math.max(1, monthlyBookings);
-  const maintenancePerBookingDay = (p.monthly_maintenance || 0) / Math.max(1, maintBase * avgBookingDays);
-
-  const marketingRate = p.marketing_rate ?? settings.marketing_rate;
-  const targetMargin = p.target_margin ?? settings.target_margin;
+  const perBookingHandling = Math.max(0, p.checkout_handling) + Math.max(0, p.return_handling) + Math.max(0, p.handoff_incentive);
   const processingPct = p.processing_pct ?? settings.processing_pct;
-  const denominator = marginDenominator(marketingRate, processingPct, targetMargin);
+  const targetMargin = p.target_margin ?? settings.target_margin;
+  const denominator = marginDenominator(processingPct, targetMargin);
 
   const plan = (duration: DurationType, days: number, discount: number): DurationQuote => {
+    // Fixed costs are prorated to the rental period; variable costs are
+    // per-booking. No purchase-price multiplication, no double-counting.
     const allocatedFixed = round2(breakdown.totalFixedMonthly * (days / 30));
     const handling = round2(perBookingHandling);
-    const usageMaintenance = round2(maintenancePerBookingDay * days);
     const processingFixed = round2(p.processing_fixed);
-    const allocatedCost = round2(allocatedFixed + handling + usageMaintenance + processingFixed);
-    // Zero-contribution floor: lowest price that still covers every cost
-    // including percentage fees. Discounts may never price below this.
-    const zeroMarginDenominator = Math.max(0.05, 1 - marketingRate - processingPct);
+    const allocatedCost = round2(allocatedFixed + handling + processingFixed);
+    // Zero-contribution floor: lowest price covering every cost including
+    // percentage fees. Discounts may never price below this.
+    const zeroMarginDenominator = Math.max(0.05, 1 - processingPct);
     const floorPrice = round2(allocatedCost / zeroMarginDenominator);
     const targetPrice = round2(allocatedCost / denominator);
     const calculated = round2(targetPrice * (1 - discount));
@@ -220,40 +292,56 @@ export function quoteRobot(
       effectiveDaily: round2(price / days),
       allocatedFixed,
       handling,
-      usageMaintenance,
       processingFixed,
       floorPrice,
-      discountFromDaily: 0,
+      targetPrice,
       overrideUsed: override != null,
       belowFloor: override != null && price < floorPrice,
     };
   };
 
-  const daily = plan('daily', avgBookingDays, 0);
+  // Daily is priced per single day (the label customers see), weekly over
+  // 7 days and monthly over 30 days, each against its own cost allocation.
+  const daily = plan('daily', 1, 0);
   const weekly = plan('weekly', 7, settings.weekly_discount);
   const monthly = plan('monthly', 30, settings.monthly_discount);
   const quotes = { daily, weekly, monthly };
 
-  // Revenue forecast: mix of durations weighted toward monthly as preferred plan.
-  // Base case: each active robot-month is filled by whichever plan is booked;
-  // we model expected revenue from the average booking length at daily rates
-  // plus a share of monthly contracts, per the utilization forecast.
+  // Monotonicity guards: longer stays must cost more in total while the
+  // effective daily rate falls. Monthly must stay below 4 weekly rentals.
+  if (weekly.price <= daily.price) {
+    weekly.price = round2(daily.price * 7 * (1 + 0.01));
+    weekly.effectiveDaily = round2(weekly.price / 7);
+  }
+  const fourWeeks = round2(weekly.price * 4);
+  if (monthly.price <= weekly.price) {
+    monthly.price = round2(weekly.price * (1 + 0.01));
+    monthly.effectiveDaily = round2(monthly.price / 30);
+  }
+  if (monthly.price >= fourWeeks) {
+    monthly.price = round2(fourWeeks * 0.99);
+    monthly.effectiveDaily = round2(monthly.price / 30);
+  }
+
+  // Monthly economics at this utilization: revenue from the booking mix.
+  // A booking of avg_booking_days is charged at the effective daily rate of
+  // the duration bucket it falls into (weekly for 7-day average bookings),
+  // not the 1-day price.
   const activeDaysPerMonth = Math.round(30 * utilization);
-  const expectedRevenue = round2((activeDaysPerMonth / avgBookingDays) * daily.price);
-  const monthlyHandlingTotal = round2((activeDaysPerMonth / avgBookingDays) * perBookingHandling);
-  const monthlyUsageMaintenanceTotal = round2(activeDaysPerMonth * maintenancePerBookingDay);
-  const monthlyProcessingTotal = round2(expectedRevenue * processingPct + (activeDaysPerMonth / avgBookingDays) * p.processing_fixed);
-  const monthlyMarketingTotal = round2(expectedRevenue * marketingRate);
-  const contributionProfit = round2(
-    expectedRevenue - breakdown.totalFixedMonthly - monthlyHandlingTotal - monthlyUsageMaintenanceTotal - monthlyProcessingTotal - monthlyMarketingTotal,
-  );
+  const bookingsPerMonth = activeDaysPerMonth / avgBookingDays;
+  const mixDuration = durationForDays(avgBookingDays);
+  const mixEffectiveDaily = quotes[mixDuration].effectiveDaily;
+  const expectedRevenue = round2(activeDaysPerMonth * mixEffectiveDaily);
+  const monthlyHandlingTotal = round2(bookingsPerMonth * perBookingHandling);
+  const monthlyAllocatedFixed = round2(breakdown.totalFixedMonthly * (activeDaysPerMonth / 30));
+  const monthlyProcessingTotal = round2(expectedRevenue * processingPct + bookingsPerMonth * p.processing_fixed);
+  const contributionProfit = round2(expectedRevenue - monthlyAllocatedFixed - monthlyHandlingTotal - monthlyProcessingTotal);
   const contributionMargin = expectedRevenue > 0 ? round2(contributionProfit / expectedRevenue) : 0;
 
-  // Break-even: bookings needed so margin-bearing revenue covers fixed costs.
-  const perBookingRevenue = daily.price;
-  const perBookingVariable = round2(
-    perBookingHandling + maintenancePerBookingDay * avgBookingDays + p.processing_fixed + perBookingRevenue * (processingPct + marketingRate),
-  );
+  // Break-even: bookings needed so per-booking contribution covers the
+  // full monthly fixed cost, at the mix duration's price.
+  const perBookingRevenue = round2(mixEffectiveDaily * avgBookingDays);
+  const perBookingVariable = round2(perBookingHandling + p.processing_fixed + perBookingRevenue * processingPct);
   const perBookingContribution = round2(perBookingRevenue - perBookingVariable);
   const breakEvenBookings = perBookingContribution > 0
     ? Math.ceil(breakdown.totalFixedMonthly / perBookingContribution)
@@ -263,14 +351,13 @@ export function quoteRobot(
     : 1;
 
   const missingCosts: string[] = [];
-  if (p.wholesale_cost <= 0) missingCosts.push('Wholesale acquisition cost missing — using $0');
-  else if (!p.wholesale_verified) missingCosts.push('Wholesale cost is an unverified estimate');
-  if (p.financing_method !== 'owned' && p.monthly_payment <= 0) missingCosts.push('Monthly financing/lease payment missing');
-  else if (p.financing_method !== 'owned' && !p.payment_verified) missingCosts.push('Financing payment is unverified');
-  if (p.monthly_insurance <= 0) missingCosts.push('Insurance cost not configured');
-  if (p.monthly_maintenance <= 0) missingCosts.push('Maintenance/consumables reserve not configured');
-  if (p.monthly_software <= 0) missingCosts.push('Software/connectivity cost not configured');
-  if (p.monthly_storage <= 0) missingCosts.push('Hub storage cost not configured');
+  const acquisition = acquisitionTotal(p);
+  if (acquisition <= 0) missingCosts.push('Acquisition cost missing — using $0');
+  else if (!p.wholesale_verified) missingCosts.push('Acquisition cost is an unverified estimate');
+  if (p.useful_life_months <= 0) missingCosts.push('Useful life not configured');
+  if (p.monthly_maintenance <= 0) missingCosts.push('Maintenance reserve not configured');
+  if (p.customer_acquisition_cost <= 0) missingCosts.push('Customer acquisition cost not configured');
+  if (p.monthly_insurance <= 0) missingCosts.push('Insurance cost not configured (excluded from preliminary figures)');
 
   return {
     breakdown,
@@ -280,9 +367,8 @@ export function quoteRobot(
     quotes,
     monthlyRevenue: expectedRevenue,
     monthlyHandling: monthlyHandlingTotal,
-    monthlyUsageMaintenance: monthlyUsageMaintenanceTotal,
+    monthlyAllocatedFixed,
     monthlyProcessing: monthlyProcessingTotal,
-    monthlyMarketing: monthlyMarketingTotal,
     contributionProfit,
     contributionMargin,
     breakEvenBookings,
@@ -293,8 +379,43 @@ export function quoteRobot(
   };
 }
 
-// Discount sanity: weekly/monthly must stay above their own margin floors,
-// which the plan() function guarantees by discounting the floor itself.
+// Utilization scenario table for one robot: profit and margin at each level,
+// flagging where the configured prices miss the 50% (or configured) target.
+export interface UtilizationRow {
+  utilization: number;
+  monthlyRevenue: number;
+  monthlyCost: number;
+  contributionProfit: number;
+  contributionMargin: number;
+  meetsTarget: boolean;
+}
+
+export function utilizationTable(p: RobotPricing, settings: PricingSettings): UtilizationRow[] {
+  const target = p.target_margin ?? settings.target_margin;
+  const rows: UtilizationRow[] = [];
+  for (const level of UTILIZATION_LEVELS) {
+    const u = scenarioUtilization(settings, level);
+    const q = quoteRobot(p, settings, u);
+    rows.push({
+      utilization: u,
+      monthlyRevenue: q.monthlyRevenue,
+      monthlyCost: round2(q.monthlyAllocatedFixed + q.monthlyHandling + q.monthlyProcessing),
+      contributionProfit: q.contributionProfit,
+      contributionMargin: q.contributionMargin,
+      meetsTarget: q.contributionMargin >= target,
+    });
+  }
+  return rows;
+}
+
+// 24-month equipment profitability: total contribution profit over the
+// remaining useful life at a given utilization, minus nothing else (the
+// acquisition cost is already amortized inside monthly depreciation).
+export function lifetimeProfitAt(p: RobotPricing, settings: PricingSettings, utilization: number, months = 24): number {
+  const q = quoteRobot(p, settings, utilization);
+  return round2(q.contributionProfit * months);
+}
+
 export function durationForDays(days: number): DurationType {
   if (days <= 6) return 'daily';
   if (days <= 27) return 'weekly';
@@ -330,4 +451,19 @@ export function quoteBookingTotal(
     total,
     effectiveDaily: days > 0 ? round2(total / days) : total,
   };
+}
+
+// Late-handoff evaluation. Fees only apply when late_fee_active is true;
+// otherwise the event is recorded but never charged. One incident yields at
+// most one fee.
+export type LateOutcome = 'grace' | 'warning' | 'chargeable' | 'missed';
+
+export function evaluateLateHandoff(
+  minutesLate: number | null,
+  settings: PricingSettings,
+): { outcome: LateOutcome; fee: number } {
+  if (minutesLate == null || minutesLate <= settings.late_grace_minutes) return { outcome: 'grace', fee: 0 };
+  if (minutesLate <= settings.late_warn_minutes) return { outcome: 'warning', fee: 0 };
+  if (settings.late_fee_active) return { outcome: 'chargeable', fee: settings.late_fee_amount };
+  return { outcome: 'chargeable', fee: 0 };
 }

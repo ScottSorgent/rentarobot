@@ -110,6 +110,15 @@ export interface Booking {
   return_handling_cost: number;
   tax_amount: number;
   hub_id: string | null;
+  pickup_at: string | null;
+  handoff_location: string | null;
+  handoff_status: string | null;
+  handoff_code: string | null;
+  handoff_fee: number;
+  checklist_done: boolean;
+  battery_confirmed: boolean;
+  outgoing_confirmed_at: string | null;
+  incoming_confirmed_at: string | null;
   robots?: Robot | Robot[];
 }
 
@@ -168,7 +177,7 @@ export function quoteTotal(robot: Robot, days: number, planType: PlanType = 'ren
   return Math.round((weeks * Number(robot.weekly_rate) + remainder * Number(robot.daily_rate)) * 100) / 100;
 }
 
-export const PRICING_VERSION = '2026-11-cost-engine-v1';
+export const PRICING_VERSION = '2026-11-refurb-p2p-v2';
 
 export function formatMoney(value: number): string {
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
