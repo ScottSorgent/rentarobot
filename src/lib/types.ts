@@ -4,7 +4,7 @@ export type RobotCategory = 'commercial' | 'residential';
 export type RobotStatus = 'available' | 'rented' | 'maintenance';
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
 export type PlanType = 'rental' | 'lease';
-export type ProviderType = 'individual' | 'sole_proprietor' | 'cleaning_company' | 'company_employee';
+export type ProviderType = 'individual' | 'sole_proprietor' | 'cleaning_company' | 'company_employee' | 'homeowner' | 'renter';
 export type ContactMethod = 'email' | 'phone' | 'sms';
 
 export interface Robot {

@@ -33,6 +33,7 @@ export default function App() {
   const [providerProfile, setProviderProfile] = useState<ProviderProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [adminChecked, setAdminChecked] = useState(false);
 
   const [robots, setRobots] = useState<Robot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +124,8 @@ export default function App() {
       setIsAdmin(adminFlag);
     } catch {
       // Pricing data is optional for browsing; admin screen surfaces its own errors.
+    } finally {
+      setAdminChecked(true);
     }
   }, []);
 
@@ -149,7 +152,7 @@ export default function App() {
     }
   }, [session, view, loadBookings]);
 
-  if (authLoading || (session && profileLoading)) {
+  if (authLoading || (session && (profileLoading || !adminChecked))) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-ink-50">
         <div
@@ -176,7 +179,7 @@ export default function App() {
     );
   }
 
-  if (!providerProfile) {
+  if (!providerProfile && !isAdmin) {
     return (
       <OnboardingPage
         email={session.user.email ?? ''}
@@ -367,6 +370,15 @@ export default function App() {
           onBrowse={goCatalog}
           onViewBookings={openBookings}
           onSignOut={handleSignOut}
+          onAccountDeleted={() => {
+            supabase.auth.signOut();
+            setBookings([]);
+            setView('catalog');
+            setSelected(null);
+          }}
+          onProfileSaved={() => {
+            fetchProviderProfile().then(setProviderProfile).catch(() => undefined);
+          }}
           onOpenPricingAdmin={openPricingAdmin}
         />
         {mobileNav}
