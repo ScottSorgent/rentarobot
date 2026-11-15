@@ -236,7 +236,7 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                   />
                   <DropdownField label="Team size" value={teamSizeLabel(form.team_size)} onChange={(value) => update('team_size', teamSizeFromLabel(value))} options={teamSizeOptions.map((option) => [option, option])} />
                   {isBusiness && (
-                    <div className="grid sm:col-span-2 gap-3 rounded-2xl border border-ink-200 p-3.5">
+                    <div className="grid sm:grid-cols-2 gap-3 rounded-2xl border border-ink-200 p-3.5">
                       <Field label="Legal business name" value={form.legal_business_name ?? ''} onChange={(value) => update('legal_business_name', value)} placeholder="Rivera Home Services LLC" required />
                       <Field label="Owner or authorized representative" value={form.owner_representative_name ?? ''} onChange={(value) => update('owner_representative_name', value)} placeholder="Jordan Rivera" required />
                       <div className="sm:col-span-2">
