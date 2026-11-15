@@ -8,14 +8,13 @@ import {
   Languages,
   Mail,
   MapPin,
-  Phone,
   Settings2,
   ShieldCheck,
   Sparkles,
   UserRound,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import type { ContactMethod, OnboardingInput, ProviderType } from '@/lib/types';
+import type { OnboardingInput, ProviderType } from '@/lib/types';
 import { completeProviderOnboarding } from '@/lib/api';
 
 interface Props {
@@ -51,6 +50,8 @@ const providerTypeOptions: [ProviderType, string][] = [
   ['sole_proprietor', 'Sole proprietor / self-employed'],
   ['cleaning_company', 'Cleaning company'],
   ['company_employee', 'Employee joining an existing company'],
+  ['homeowner', 'Homeowner'],
+  ['renter', 'Renter'],
 ];
 
 const businessStructureOptions = [
@@ -80,7 +81,7 @@ export default function OnboardingPage({ email, onComplete }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const isBusiness = form.provider_type !== 'individual';
+  const isBusiness = ['sole_proprietor', 'cleaning_company', 'company_employee'].includes(form.provider_type);
 
   function update<K extends keyof OnboardingInput>(key: K, value: OnboardingInput[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -89,7 +90,6 @@ export default function OnboardingPage({ email, onComplete }: Props) {
   function validateCurrentStep(): string | null {
     if (step === 0) {
       if (form.full_legal_name.trim().length < 2) return 'Please enter your full legal name.';
-      if (form.display_name.trim().length < 2) return 'Please enter the name you want clients to see.';
       if (form.mobile_phone.trim().length < 7) return 'Please enter a valid mobile phone number.';
     }
     if (step === 1) {
@@ -128,7 +128,7 @@ export default function OnboardingPage({ email, onComplete }: Props) {
       await completeProviderOnboarding({
         ...form,
         full_legal_name: form.full_legal_name.trim(),
-        display_name: form.display_name.trim(),
+        display_name: form.full_legal_name.trim(),
         mobile_phone: form.mobile_phone.trim(),
         legal_business_name: form.legal_business_name?.trim(),
         owner_representative_name: form.owner_representative_name?.trim(),
@@ -145,51 +145,54 @@ export default function OnboardingPage({ email, onComplete }: Props) {
 
   return (
     <div className="min-h-screen bg-ink-50">
-      <header className="bg-ink-950 text-white">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <img src="/Glossy_Robot_Calendar_App_Icon.png" alt="Rent-A-Robot" className="w-10 h-10 rounded-xl object-cover" />
-            <div>
-              <p className="font-display font-bold tracking-tight">Rent-A-Robot</p>
-              <p className="text-xs text-ink-400">Provider setup</p>
-            </div>
-          </div>
-          <span className="text-xs text-ink-300 hidden sm:block">Step {step + 1} of {steps.length}</span>
-        </div>
-      </header>
-
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 md:py-12">
-        <div className="grid lg:grid-cols-[220px_1fr] gap-8 lg:gap-12 items-start">
-          <aside className="lg:sticky lg:top-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Let’s get you ready</p>
-            <h1 className="mt-2 font-display text-2xl md:text-3xl font-bold tracking-tight text-ink-950">Build your provider profile.</h1>
-            <p className="mt-3 text-sm text-ink-500 leading-relaxed">Three quick screens — most questions are simple dropdown picks.</p>
-            <nav className="mt-8 space-y-1.5" aria-label="Onboarding progress">
-              {steps.map((item, index) => {
-                const Icon = item.icon;
-                const active = index === step;
-                const complete = index < step;
-                return (
-                  <button
-                    key={item.title}
-                    type="button"
-                    onClick={() => index < step && setStep(index)}
-                    disabled={index > step}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm transition-colors ${
-                      active ? 'bg-white border border-ink-200 text-ink-950 shadow-sm' : complete ? 'text-brand-800 hover:bg-white' : 'text-ink-400'
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Let’s get you ready</p>
+          <h1 className="mt-2 font-display text-2xl md:text-3xl font-bold tracking-tight text-ink-950">Build your provider profile.</h1>
+          <p className="mt-3 text-sm text-ink-500 leading-relaxed">Three quick screens — most questions are simple dropdown picks.</p>
+        </div>
+
+        <nav className="mt-6 flex items-center" aria-label="Onboarding progress">
+          {steps.map((item, index) => {
+            const Icon = item.icon;
+            const active = index === step;
+            const complete = index < step;
+            return (
+              <div key={item.title} className={`flex items-center ${index < steps.length - 1 ? 'flex-1' : ''}`}>
+                <button
+                  type="button"
+                  onClick={() => index < step && setStep(index)}
+                  disabled={index > step}
+                  className={`flex items-center gap-2.5 text-left transition-colors ${
+                    active ? 'text-ink-950' : complete ? 'text-brand-800 hover:text-brand-900' : 'text-ink-400'
+                  }`}
+                >
+                  <span
+                    className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border transition-colors ${
+                      active
+                        ? 'bg-ink-950 text-white border-ink-950'
+                        : complete
+                          ? 'bg-brand-100 text-brand-800 border-brand-200'
+                          : 'bg-white text-ink-400 border-ink-200'
                     }`}
                   >
-                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${active ? 'bg-ink-950 text-white' : complete ? 'bg-brand-100 text-brand-800' : 'bg-ink-100 text-ink-400'}`}>
-                      {complete ? <Check size={15} /> : <Icon size={15} />}
-                    </span>
-                    <span className="font-semibold">{item.title}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </aside>
+                    {complete ? <Check size={15} /> : <Icon size={15} />}
+                  </span>
+                  <span className="hidden md:block">
+                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-ink-400">Step {index + 1}</span>
+                    <span className="block text-xs font-semibold whitespace-nowrap">{item.title}</span>
+                  </span>
+                  <span className="md:hidden text-xs font-semibold whitespace-nowrap">Step {index + 1}</span>
+                </button>
+                {index < steps.length - 1 && (
+                  <span className={`flex-1 h-0.5 mx-2 sm:mx-3 rounded-full transition-colors ${complete ? 'bg-brand-400' : 'bg-ink-200'}`} />
+                )}
+              </div>
+            );
+          })}
+        </nav>
 
-          <section className="bg-white rounded-3xl border border-ink-100 shadow-sm p-5 sm:p-8">
+        <section className="mt-6 bg-white rounded-3xl border border-ink-100 shadow-sm p-5 sm:p-6">
             {step === 0 && (
               <StepShell
                 eyebrow="Step 1 · Account"
@@ -197,9 +200,8 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                 description="Use the name we should use for agreements and the name clients should see."
                 icon={<UserRound size={20} />}
               >
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid sm:grid-cols-2 gap-3">
                   <Field label="Full legal name" value={form.full_legal_name} onChange={(value) => update('full_legal_name', value)} placeholder="Jordan Rivera" required />
-                  <Field label="Preferred / display name" value={form.display_name} onChange={(value) => update('display_name', value)} placeholder="Jordan's Cleaning" required />
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-semibold text-ink-700">Email address</span>
                     <span className="mt-1.5 flex items-center gap-2 bg-ink-50 border border-ink-200 rounded-xl px-3.5 py-3 text-sm text-ink-600"><Mail size={16} className="text-ink-400" />{email}</span>
@@ -207,13 +209,6 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                   </label>
                   <Field label="Mobile phone number" value={form.mobile_phone} onChange={(value) => update('mobile_phone', value)} placeholder="(555) 000-0000" type="tel" required />
                   <DropdownField label="Preferred language" value={form.preferred_language} onChange={(value) => update('preferred_language', value)} options={languageOptions.map((language) => [language, language])} icon={<Languages size={15} />} />
-                  <DropdownField
-                    label="Preferred contact method"
-                    value={form.preferred_contact_method}
-                    onChange={(value) => update('preferred_contact_method', value as ContactMethod)}
-                    options={[['email', 'Email'], ['phone', 'Phone call'], ['sms', 'Text message']]}
-                    icon={<Phone size={15} />}
-                  />
                 </div>
               </StepShell>
             )}
@@ -225,9 +220,9 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                 description="Pick your setup and services — everything here is a dropdown except business names."
                 icon={<Sparkles size={20} />}
               >
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <DropdownField
-                    label="Provider type"
+                    label="Customer type"
                     value={form.provider_type}
                     onChange={(value) => update('provider_type', value as ProviderType)}
                     options={providerTypeOptions}
@@ -242,7 +237,7 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                   />
                   <DropdownField label="Team size" value={teamSizeLabel(form.team_size)} onChange={(value) => update('team_size', teamSizeFromLabel(value))} options={teamSizeOptions.map((option) => [option, option])} />
                   {isBusiness && (
-                    <div className="grid sm:grid-cols-2 gap-4 rounded-2xl border border-ink-200 p-4">
+                    <div className="grid sm:grid-cols-2 gap-3 rounded-2xl border border-ink-200 p-3.5">
                       <Field label="Legal business name" value={form.legal_business_name ?? ''} onChange={(value) => update('legal_business_name', value)} placeholder="Rivera Home Services LLC" required />
                       <Field label="Owner or authorized representative" value={form.owner_representative_name ?? ''} onChange={(value) => update('owner_representative_name', value)} placeholder="Jordan Rivera" required />
                       <div className="sm:col-span-2">
@@ -266,8 +261,8 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                 description="Finish with your service area, equipment experience and the required agreements."
                 icon={<ShieldCheck size={20} />}
               >
-                <div className="space-y-4">
-                  <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div className="grid sm:grid-cols-2 gap-3">
                     <Field label="Home or business ZIP code" value={form.home_zip} onChange={(value) => update('home_zip', value)} placeholder="94107" required />
                     <Field label="Cities or ZIP codes served" value={form.service_area_zips.join(', ')} onChange={(value) => update('service_area_zips', value.split(',').map((area) => area.trim()).filter(Boolean))} placeholder="94107, 94110, San Francisco" required hint="Separate multiple areas with commas." />
                     <DropdownField
@@ -303,9 +298,9 @@ export default function OnboardingPage({ email, onComplete }: Props) {
               </StepShell>
             )}
 
-            {error && <div className="mt-6 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">{error}</div>}
+            {error && <div className="mt-4 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">{error}</div>}
 
-            <div className="mt-8 pt-6 border-t border-ink-100 flex items-center justify-between gap-3">
+            <div className="mt-6 pt-4 border-t border-ink-100 flex items-center justify-between gap-3">
               {step > 0 ? (
                 <button type="button" onClick={() => { setError(null); setStep((current) => Math.max(0, current - 1)); }} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-ink-600 hover:text-ink-950 hover:bg-ink-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                   <ChevronLeft size={17} /> Back
@@ -323,8 +318,7 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                 </button>
               )}
             </div>
-          </section>
-        </div>
+        </section>
       </main>
     </div>
   );
@@ -372,11 +366,11 @@ function StepShell({
         <span className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 text-brand-700 flex items-center justify-center shrink-0">{icon}</span>
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">{eyebrow}</p>
-          <h2 className="mt-1 font-display text-2xl md:text-3xl font-bold tracking-tight text-ink-950">{title}</h2>
+          <h2 className="mt-1 font-display text-xl md:text-2xl font-bold tracking-tight text-ink-950">{title}</h2>
           <p className="mt-2 text-sm text-ink-500 leading-relaxed max-w-2xl">{description}</p>
         </div>
       </div>
-      <div className="mt-8">{children}</div>
+      <div className="mt-6">{children}</div>
     </>
   );
 }
