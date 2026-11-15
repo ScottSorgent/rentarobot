@@ -569,7 +569,7 @@ function StatCard({ label, value, sub, warn, icon }: { label: string; value: str
     <div className={`bg-white rounded-2xl border p-5 ${warn ? 'border-amber-300 bg-amber-50' : 'border-ink-100'}`}>
       <p className="text-xs font-semibold text-ink-500 flex items-center gap-2">{icon}{label}</p>
       <p className="mt-1 font-display text-2xl font-bold text-ink-950">{value}</p>
-      {sub && <p className="text-xs text-ink-500 mt-0.5">{sub}</p>
+      {sub && <p className="text-xs text-ink-500 mt-0.5">{sub}</p>}
     </div>
   );
 }
