@@ -2,8 +2,8 @@ import { AlertTriangle, BarChart3, Building2, History, Lock, Save, ShieldCheck, 
 import { useEffect, useMemo, useState } from 'react';
 import type { Robot } from '@/lib/types';
 import { formatMoney } from '@/lib/types';
-import type { Hub, PricingSettings, RobotPricing, RobotQuote, ScenarioName } from '@/lib/pricing';
-import { quoteRobot, round2 } from '@/lib/pricing';
+import type { Hub, PricingSettings, RobotPricing, RobotQuote } from '@/lib/pricing';
+import { quoteRobot, round2, utilizationTable, UTILIZATION_LEVELS } from '@/lib/pricing';
 import { addAdminByEmail, applyCatalogRates, fetchAdminList, removeAdmin, saveRobotPricing, savePlatformSettings } from '@/lib/api';
 
 interface Props {
@@ -25,21 +25,29 @@ type MoneyField = {
 };
 
 const monthlyFields: MoneyField[] = [
-  { key: 'monthly_storage', label: 'Hub storage & charging ($/mo)' },
-  { key: 'monthly_insurance', label: 'Insurance allocation ($/mo)' },
   { key: 'monthly_maintenance', label: 'Maintenance & consumables reserve ($/mo)' },
+  { key: 'monthly_hosting', label: 'Hosting allocation ($/mo)' },
+  { key: 'monthly_insurance', label: 'Insurance allocation ($/mo, optional)' },
   { key: 'monthly_software', label: 'Software & connectivity ($/mo)' },
-  { key: 'monthly_hosting', label: 'Website hosting allocation ($/mo)' },
+  { key: 'monthly_storage', label: 'Hub storage ($/mo, optional fallback)' },
+  { key: 'handoff_incentive', label: 'Handoff incentive ($ per handoff)' },
+];
+
+const acquisitionFields: MoneyField[] = [
+  { key: 'wholesale_cost', label: 'Used robot purchase ($)' },
+  { key: 'battery_cost', label: 'New battery ($)' },
+  { key: 'refurbishment_cost', label: 'Other refurbishment ($)' },
+  { key: 'customer_acquisition_cost', label: 'Customer acquisition cost ($ one-time)' },
 ];
 
 const bookingFields: MoneyField[] = [
   { key: 'checkout_handling', label: 'Checkout handling ($ per rental)' },
-  { key: 'return_handling', label: 'Return handling ($ per rental)' },
+  { key: 'return_handling', label: 'Return handling ($ per rental, optional fallback)' },
   { key: 'processing_fixed', label: 'Payment processing fixed fee ($)' },
 ];
 
 export default function PricingAdminPage({ robots, pricingByRobot, settings, hubs, audit, isAdmin, currentUserId, onBack, onDataChanged }: Props) {
-  const [scenario, setScenario] = useState<ScenarioName>('base');
+  const [utilizationLevel, setUtilizationLevel] = useState<0.6 | 0.7 | 0.8 | 0.9 | 1.0>(0.8);
   const [editingRobotId, setEditingRobotId] = useState<string | null>(null);
   const [draft, setDraft] = useState<RobotPricing | null>(null);
   const [saving, setSaving] = useState(false);
@@ -95,10 +103,10 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     const map = new Map<string, RobotQuote>();
     for (const robot of robots) {
       const p = pricingByRobot.get(robot.id);
-      if (p) map.set(robot.id, quoteRobot(p, settingsDraft, scenario));
+      if (p) map.set(robot.id, quoteRobot(p, settingsDraft, utilizationLevel));
     }
     return map;
-  }, [robots, pricingByRobot, settingsDraft, scenario]);
+  }, [robots, pricingByRobot, settingsDraft, utilizationLevel]);
 
   const fleet = useMemo(() => {
     let revenue = 0;
@@ -146,7 +154,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     setSaving(true);
     setSaveError(null);
     try {
-      const summary = `Updated cost configuration for ${draft.model_name || draft.robot_id}: wholesale ${draft.wholesale_cost}, financing ${draft.financing_method} at ${draft.monthly_payment}/mo, storage ${draft.monthly_storage}/mo.`;
+      const summary = `Updated cost configuration for ${draft.model_name || draft.robot_id}: acquisition ${(draft.wholesale_cost + draft.battery_cost + draft.refurbishment_cost).toFixed(2)}, maintenance ${draft.monthly_maintenance}/mo, CAC ${draft.customer_acquisition_cost} over ${draft.expected_bookings_per_customer} bookings.`;
       await saveRobotPricing(draft.robot_id, draft, summary);
       setEditingRobotId(null);
       setDraft(null);
@@ -183,7 +191,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     setSaving(true);
     setSaveError(null);
     try {
-      const summary = `Updated platform pricing defaults: marketing ${Math.round(settingsDraft.marketing_rate * 100)}%, target margin ${Math.round(settingsDraft.target_margin * 100)}%, utilization ${Math.round(settingsDraft.utilization_base * 100)}%, ${settingsDraft.robots_per_hub} robots/hub.`;
+      const summary = `Updated platform pricing defaults: target margin ${Math.round(settingsDraft.target_margin * 100)}%, CAC ${settingsDraft.customer_acquisition_cost} over ${settingsDraft.expected_bookings_per_customer} bookings, maintenance ${settingsDraft.maintenance_monthly}/mo.`;
       await savePlatformSettings(settingsDraft, summary);
       onDataChanged();
     } catch (e) {
@@ -289,18 +297,18 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-display font-bold">Utilization scenarios</h2>
-              <p className="text-xs text-ink-500 mt-0.5">Compare outcomes. The 80% target is a planning assumption, not a guaranteed result.</p>
+              <p className="text-xs text-ink-500 mt-0.5">Fixed fleet costs are allocated across revenue-producing periods at each level. Rows flagged red miss the contribution-margin target at the current prices.</p>
             </div>
             <div className="flex gap-2">
-              {(['conservative', 'base', 'optimistic'] as ScenarioName[]).map((s) => (
+              {UTILIZATION_LEVELS.map((u) => (
                 <button
-                  key={s}
-                  onClick={() => setScenario(s)}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all capitalize ${
-                    scenario === s ? 'bg-ink-900 text-white border-ink-900' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-300'
+                  key={u}
+                  onClick={() => setUtilizationLevel(u)}
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                    utilizationLevel === u ? 'bg-ink-900 text-white border-ink-900' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-300'
                   }`}
                 >
-                  {s}
+                  {Math.round(u * 100)}%
                 </button>
               ))}
             </div>
@@ -321,11 +329,12 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                   <div className="flex-1 min-w-0">
                     <h3 className="font-display font-semibold text-lg">{robot.name}</h3>
                     <p className="text-xs text-ink-500">
-                      {p.manufacturer} · {p.cost_category} · {p.financing_method === 'owned' ? 'Owned (depreciated)' : `${p.financing_method.replace('_', ' ')} ${formatMoney(p.monthly_payment)}/mo`}
-                      {' '}· fixed {formatMoney(q.breakdown.totalFixedMonthly)}/mo
+                      {p.manufacturer} · {p.cost_category === 'window_cleaning' ? 'Window cleaning' : p.cost_category} · {p.financing_method === 'owned' ? `owned, acquired ${formatMoney(p.wholesale_cost + p.battery_cost + p.refurbishment_cost)}` : `${p.financing_method.replace('_', ' ')} ${formatMoney(p.monthly_payment)}/mo`}
+                      {' '}· fixed {formatMoney(q.breakdown.totalFixedMonthly)}/mo (depreciation {formatMoney(q.breakdown.capitalMonthly)}, CAC {formatMoney(q.breakdown.cacAllocation)}/mo)
                     </p>
+                    <UtilizationTable p={p} settings={settingsDraft} />
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full bg-ink-100 px-2 py-0.5">Utilization {Math.round(q.utilization * 100)}% · {q.monthlyBookings} bookings/mo</span>
+                      <span className="rounded-full bg-ink-100 px-2 py-0.5">Utilization {Math.round(q.utilization * 100)}% · {q.monthlyBookings.toFixed(1)} bookings/mo</span>
                       <span className="rounded-full bg-ink-100 px-2 py-0.5">Revenue {formatMoney(q.monthlyRevenue)}/mo</span>
                       <span className={`rounded-full px-2 py-0.5 ${q.contributionProfit >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                         Profit {formatMoney(q.contributionProfit)} ({Math.round(q.contributionMargin * 100)}%)
@@ -371,12 +380,15 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                       <SelectField
                         label="Category"
                         value={draft.cost_category}
-                        options={[['residential', 'Residential'], ['prosumer', 'Prosumer'], ['commercial', 'Commercial']]}
+                        options={[['residential', 'Residential'], ['prosumer', 'Prosumer'], ['commercial', 'Commercial'], ['window_cleaning', 'Window cleaning']]}
                         onChange={(v) => updateDraft('cost_category', v as RobotPricing['cost_category'])}
                       />
-                      <NumberField label="Retail purchase price ($)" value={draft.retail_price} onChange={(v) => updateDraft('retail_price', v)} />
-                      <NumberField label="Wholesale acquisition cost ($)" value={draft.wholesale_cost} onChange={(v) => updateDraft('wholesale_cost', v)} />
-                      <TextField label="Acquisition cost source" value={draft.wholesale_source} onChange={(v) => updateDraft('wholesale_source', v)} />
+                      <NumberField label="Used robot purchase ($)" value={draft.wholesale_cost} onChange={(v) => updateDraft('wholesale_cost', v)} />
+                      <NumberField label="New battery ($)" value={draft.battery_cost} onChange={(v) => updateDraft('battery_cost', v)} />
+                      <NumberField label="Other refurbishment ($)" value={draft.refurbishment_cost} onChange={(v) => updateDraft('refurbishment_cost', v)} />
+                      <NumberField label="Customer acquisition cost ($ one-time)" value={draft.customer_acquisition_cost} onChange={(v) => updateDraft('customer_acquisition_cost', v)} />
+                      <NumberField label="Expected bookings per customer" value={draft.expected_bookings_per_customer} onChange={(v) => updateDraft('expected_bookings_per_customer', v)} />
+                      <NumberField label="Handoff incentive ($ per handoff)" value={draft.handoff_incentive} onChange={(v) => updateDraft('handoff_incentive', v)} />
                       <SelectField
                         label="Financing method"
                         value={draft.financing_method}
@@ -407,7 +419,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                       <SelectField
                         label="Distribution hub"
                         value={draft.hub_id ?? ''}
-                        options={[['', 'Unassigned'], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
+                        options={[[ '', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
                         onChange={(v) => updateDraft('hub_id', v || null)}
                       />
                       <label className="flex items-center gap-2 text-sm">
@@ -433,23 +445,34 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
           <h2 className="font-display font-bold">Platform defaults</h2>
           <p className="text-xs text-ink-500 mt-0.5">Applied to robots without a robot-specific value. Editable until verified supplier quotes arrive.</p>
           <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <NumberField label="Marketing (% of revenue)" value={settingsDraft.marketing_rate} onChange={(v) => setSettingsDraft((s) => ({ ...s, marketing_rate: v }))} step="0.01" />
             <NumberField label="Target contribution margin" value={settingsDraft.target_margin} onChange={(v) => setSettingsDraft((s) => ({ ...s, target_margin: v }))} step="0.01" />
+            <NumberField label="New battery default ($)" value={settingsDraft.battery_cost} onChange={(v) => setSettingsDraft((s) => ({ ...s, battery_cost: v }))} />
+            <NumberField label="Other refurbishment default ($)" value={settingsDraft.refurbishment_cost} onChange={(v) => setSettingsDraft((s) => ({ ...s, refurbishment_cost: v }))} />
+            <NumberField label="Useful life (months)" value={settingsDraft.useful_life_months} onChange={(v) => setSettingsDraft((s) => ({ ...s, useful_life_months: v }))} />
+            <NumberField label="Maintenance reserve ($/mo)" value={settingsDraft.maintenance_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, maintenance_monthly: v }))} />
+            <NumberField label="Hosting allocation ($/robot/mo)" value={settingsDraft.hosting_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, hosting_monthly: v }))} />
+            <NumberField label="Insurance ($/robot/mo, optional)" value={settingsDraft.insurance_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, insurance_monthly: v }))} />
+            <NumberField label="Customer acquisition cost ($ one-time)" value={settingsDraft.customer_acquisition_cost} onChange={(v) => setSettingsDraft((s) => ({ ...s, customer_acquisition_cost: v }))} />
+            <NumberField label="Expected bookings per customer" value={settingsDraft.expected_bookings_per_customer} onChange={(v) => setSettingsDraft((s) => ({ ...s, expected_bookings_per_customer: v }))} />
+            <NumberField label="Handoff incentive ($ per handoff)" value={settingsDraft.handoff_incentive} onChange={(v) => setSettingsDraft((s) => ({ ...s, handoff_incentive: v }))} />
             <NumberField label="Processing rate" value={settingsDraft.processing_pct} onChange={(v) => setSettingsDraft((s) => ({ ...s, processing_pct: v }))} step="0.001" />
             <NumberField label="Processing fixed fee ($)" value={settingsDraft.processing_fixed} onChange={(v) => setSettingsDraft((s) => ({ ...s, processing_fixed: v }))} step="0.01" />
-            <NumberField label="Hub storage ($/robot/mo)" value={settingsDraft.storage_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, storage_monthly: v }))} />
-            <NumberField label="Insurance ($/robot/mo)" value={settingsDraft.insurance_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, insurance_monthly: v }))} />
-            <NumberField label="Maintenance reserve ($/mo)" value={settingsDraft.maintenance_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, maintenance_monthly: v }))} />
+            <NumberField label="Hub storage ($/robot/mo, fallback)" value={settingsDraft.storage_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, storage_monthly: v }))} />
+            <NumberField label="Checkout handling ($, fallback)" value={settingsDraft.checkout_handling} onChange={(v) => setSettingsDraft((s) => ({ ...s, checkout_handling: v }))} />
+            <NumberField label="Return handling ($, fallback)" value={settingsDraft.return_handling} onChange={(v) => setSettingsDraft((s) => ({ ...s, return_handling: v }))} />
             <NumberField label="Software ($/robot/mo)" value={settingsDraft.software_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, software_monthly: v }))} />
-            <NumberField label="Hosting allocation ($/robot/mo)" value={settingsDraft.hosting_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, hosting_monthly: v }))} />
-            <NumberField label="Checkout handling ($)" value={settingsDraft.checkout_handling} onChange={(v) => setSettingsDraft((s) => ({ ...s, checkout_handling: v }))} />
-            <NumberField label="Return handling ($)" value={settingsDraft.return_handling} onChange={(v) => setSettingsDraft((s) => ({ ...s, return_handling: v }))} />
             <NumberField label="Base utilization (0-1)" value={settingsDraft.utilization_base} onChange={(v) => setSettingsDraft((s) => ({ ...s, utilization_base: v }))} step="0.05" />
-            <NumberField label="Robots per hub" value={settingsDraft.robots_per_hub} onChange={(v) => setSettingsDraft((s) => ({ ...s, robots_per_hub: v }))} />
             <NumberField label="Weekly discount target" value={settingsDraft.weekly_discount} onChange={(v) => setSettingsDraft((s) => ({ ...s, weekly_discount: v }))} step="0.01" />
             <NumberField label="Monthly discount target" value={settingsDraft.monthly_discount} onChange={(v) => setSettingsDraft((s) => ({ ...s, monthly_discount: v }))} step="0.01" />
             <NumberField label="Tax rate" value={settingsDraft.tax_rate} onChange={(v) => setSettingsDraft((s) => ({ ...s, tax_rate: v }))} step="0.01" />
             <NumberField label="Average booking length (days)" value={settingsDraft.avg_booking_days} onChange={(v) => setSettingsDraft((s) => ({ ...s, avg_booking_days: v }))} />
+            <NumberField label="Late-handoff grace (minutes)" value={settingsDraft.late_grace_minutes} onChange={(v) => setSettingsDraft((s) => ({ ...s, late_grace_minutes: v }))} />
+            <NumberField label="Late-handoff warning (minutes)" value={settingsDraft.late_warn_minutes} onChange={(v) => setSettingsDraft((s) => ({ ...s, late_warn_minutes: v }))} />
+            <NumberField label="Late-handoff fee ($)" value={settingsDraft.late_fee_amount} onChange={(v) => setSettingsDraft((s) => ({ ...s, late_fee_amount: v }))} />
+            <label className="flex items-center gap-2 text-sm self-end pb-2">
+              <input type="checkbox" checked={settingsDraft.late_fee_active} onChange={(e) => setSettingsDraft((s) => ({ ...s, late_fee_active: e.target.checked }))} className="w-4 h-4 accent-brand-600" />
+              Late-handoff fees active (requires legal approval)
+            </label>
             <label className="flex items-center gap-2 text-sm self-end pb-2">
               <input type="checkbox" checked={settingsDraft.verified} onChange={(e) => setSettingsDraft((s) => ({ ...s, verified: e.target.checked }))} className="w-4 h-4 accent-brand-600" />
               All default assumptions verified
@@ -505,6 +528,38 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
           )}
         </section>
       </main>
+    </div>
+  );
+}
+
+function UtilizationTable({ p, settings }: { p: RobotPricing; settings: PricingSettings }) {
+  const rows = utilizationTable(p, settings);
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left text-ink-400 border-b border-ink-100">
+            <th className="py-1.5 pr-3 font-semibold">Utilization</th>
+            <th className="py-1.5 pr-3 font-semibold">Revenue/mo</th>
+            <th className="py-1.5 pr-3 font-semibold">Cost/mo</th>
+            <th className="py-1.5 pr-3 font-semibold">Contribution profit</th>
+            <th className="py-1.5 pr-3 font-semibold">Margin</th>
+            <th className="py-1.5 font-semibold">24-mo profit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.utilization} className={`border-b border-ink-50 ${r.meetsTarget ? '' : 'text-red-700'}`}>
+              <td className="py-1.5 pr-3 font-medium">{Math.round(r.utilization * 100)}%</td>
+              <td className="py-1.5 pr-3">{formatMoney(r.monthlyRevenue)}</td>
+              <td className="py-1.5 pr-3">{formatMoney(r.monthlyCost)}</td>
+              <td className="py-1.5 pr-3">{formatMoney(r.contributionProfit)}</td>
+              <td className="py-1.5 pr-3">{Math.round(r.contributionMargin * 100)}%{r.meetsTarget ? '' : ' · below target'}</td>
+              <td className="py-1.5">{formatMoney(r.contributionProfit * 24)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

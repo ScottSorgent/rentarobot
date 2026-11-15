@@ -36,7 +36,7 @@ export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpen
         <div className="absolute inset-0 bg-gradient-to-r from-ink-950 via-ink-950/80 to-ink-950/30" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28">
           <p className="animate-fade-up inline-flex items-center gap-2 text-brand-300 text-sm font-semibold bg-brand-500/10 border border-brand-400/20 rounded-full px-3.5 py-1.5 mb-6">
-            <Store size={15} /> Pickup only — reserve online, collect in store
+            <Store size={15} /> Pickup Only — Reserve Here, Collect from Peer
           </p>
           <h1 className="animate-fade-up font-display text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-[1.1] max-w-2xl" style={{ animationDelay: '80ms' }}>
             Premium cleaning power, on demand.
@@ -63,7 +63,7 @@ export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpen
             {[
               { icon: Bot, title: 'Pick your cleaning partner', text: 'Compare floor-care and detail-cleaning robots by size, runtime, ratings and availability, then reserve your unit online.' },
               { icon: PackageCheck, title: 'Rent or lease', text: 'Choose a short rental for a busy week or a monthly lease for dependable day-to-day work. Your quote updates instantly.' },
-              { icon: Store, title: 'Pick up & get started', text: 'Collect your robot in store at your convenience. Every unit is inspected, sanitized and ready to work when you arrive.' },
+              { icon: Store, title: 'Pick up & get started', text: 'Reserve here, then collect the robot directly from a fellow renter through a peer-to-peer handoff — no store stop required. Every unit is inspected, sanitized and ready to work when you arrive.' },
             ].map((s, i) => (
               <div key={s.title} className="relative">
                 <div className="flex items-center gap-4">

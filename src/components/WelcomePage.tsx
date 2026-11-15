@@ -87,8 +87,8 @@ export default function WelcomePage({ onAuthed }: Props) {
       <div className="relative min-h-screen flex flex-col">
         <header className="max-w-6xl w-full mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Logo size="sm" />
-            <span className="font-display font-bold text-2xl text-white tracking-tight">Rent-A-Robot</span>
+            <Logo size="lg" />
+            <span className="font-display font-bold text-3xl text-white tracking-tight">Rent-A-Robot</span>
           </div>
           {mode !== 'welcome' ? (
             <button
@@ -137,15 +137,15 @@ function WelcomePane({ onSignIn, onSignUp }: { onSignIn: () => void; onSignUp: (
   return (
     <>
       <div className="animate-fade-up">
-        <h1 className="font-display text-4xl sm:text-5xl font-bold text-white leading-[1.1]">
+        <h1 className="font-display text-3xl sm:text-4xl font-bold text-white leading-[1.15]">
           Your Cleaning Business, Upgraded
         </h1>
-        <p className="mt-3 text-base text-ink-300 leading-relaxed max-w-2xl">
+        <p className="mt-3 text-sm text-ink-300 leading-relaxed max-w-2xl">
           Lease or rent professional cleaning robots that help you finish more homes, protect your energy and grow on your terms.
         </p>
       </div>
 
-      <div className="mt-8 grid sm:grid-cols-3 gap-4 animate-fade-up" style={{ animationDelay: '120ms' }}>
+      <div className="mt-5 grid sm:grid-cols-3 gap-4 animate-fade-up" style={{ animationDelay: '120ms' }}>
         {features.map((f, i) => (
           <div
             key={f.title}
