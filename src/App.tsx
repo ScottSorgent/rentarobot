@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import CatalogPage from '@/components/CatalogPage';
+import HomePage from '@/components/HomePage';
 import OnboardingPage from '@/components/OnboardingPage';
 import ProfilePage from '@/components/ProfilePage';
 import PricingAdminPage from '@/components/PricingAdminPage';
@@ -25,7 +26,7 @@ import {
 import { DEFAULT_SETTINGS, type Hub, type PricingSettings, type RobotPricing } from '@/lib/pricing';
 import type { Booking, NewBooking, ProviderProfile, Robot } from '@/lib/types';
 
-type View = 'catalog' | 'detail' | 'bookings' | 'profile' | 'rented' | 'rentedGuide' | 'pricingAdmin';
+type View = 'home' | 'catalog' | 'detail' | 'bookings' | 'profile' | 'rented' | 'rentedGuide' | 'pricingAdmin';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -45,7 +46,7 @@ export default function App() {
   const [audit, setAudit] = useState<{ id: string; robot_id: string | null; scope: string; summary: string; created_at: string }[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  const [view, setView] = useState<View>('catalog');
+  const [view, setView] = useState<View>('home');
   const [selected, setSelected] = useState<Robot | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
@@ -147,7 +148,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (session && view === 'rented') {
+    if (session && (view === 'rented' || view === 'home')) {
       loadBookings();
     }
   }, [session, view, loadBookings]);
@@ -207,6 +208,11 @@ export default function App() {
     setSelected(null);
   }
 
+  function goHome() {
+    setView('home');
+    window.scrollTo({ top: 0 });
+  }
+
   function openRented() {
     setView('rented');
     window.scrollTo({ top: 0 });
@@ -234,15 +240,13 @@ export default function App() {
       openRented();
       return;
     }
-    // 'home' and 'browse' live on the catalog screen
-    goCatalog();
-    if (tab === 'browse') {
-      requestAnimationFrame(() => {
-        document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' });
-      });
-    } else {
-      window.scrollTo({ top: 0 });
+    if (tab === 'home') {
+      goHome();
+      return;
     }
+    // 'browse' is the catalog screen
+    goCatalog();
+    window.scrollTo({ top: 0 });
   }
 
   async function submitBooking(booking: NewBooking) {
@@ -278,10 +282,11 @@ export default function App() {
   }
 
   function activeMobileTab(): MobileTab {
+    if (view === 'home') return 'home';
     if (view === 'profile') return 'profile';
     if (view === 'bookings') return 'bookings';
     if (view === 'rented' || view === 'rentedGuide') return 'rented';
-    return 'home';
+    return 'browse';
   }
 
   const mobileNav =
@@ -322,6 +327,23 @@ export default function App() {
     return (
       <>
         <RentedRobotGuidePage robot={selected} booking={selectedBooking} onBack={openRented} />
+        {mobileNav}
+      </>
+    );
+  }
+
+  if (view === 'home') {
+    return (
+      <>
+        <HomePage
+          robots={robots}
+          bookings={bookings}
+          userEmail={session.user.email ?? ''}
+          onBrowse={goCatalog}
+          onOpenRobot={openRobot}
+          onOpenBookings={openBookings}
+          onSignOut={handleSignOut}
+        />
         {mobileNav}
       </>
     );
@@ -395,6 +417,8 @@ export default function App() {
         userEmail={session.user.email ?? ''}
         onOpenRobot={openRobot}
         onSignOut={handleSignOut}
+        onGoHome={goHome}
+        onOpenBookings={openBookings}
       />
       {mobileNav}
     </>

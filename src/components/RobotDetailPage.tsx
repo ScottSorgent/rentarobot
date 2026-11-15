@@ -40,7 +40,6 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
     return d.toISOString().slice(0, 10);
   })());
   const [usageType, setUsageType] = useState<RobotCategory>(robot.category);
-  const [delivery, setDelivery] = useState(true);
   const [damageProtection, setDamageProtection] = useState(false);
   const [minimumTermMonths, setMinimumTermMonths] = useState(1);
   const [name, setName] = useState('');
@@ -65,17 +64,16 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
   const totals = useMemo(() => {
     if (quote) {
       const t = quoteBookingTotal(quote, duration, days);
-      const deliveryFee = delivery ? 45 : 0;
       const protectionFee = damageProtection ? Math.round(t.base * 0.09 * 100) / 100 : 0;
-      const total = Math.round((t.base + t.tax + deliveryFee + protectionFee) * 100) / 100;
-      return { ...t, deliveryFee, protectionFee, total, unitPrice: quote.quotes[duration].price, floorPrice: quote.quotes[duration].floorPrice };
+      const total = Math.round((t.base + t.tax + protectionFee) * 100) / 100;
+      return { ...t, deliveryFee: 0, protectionFee, total, unitPrice: quote.quotes[duration].price, floorPrice: quote.quotes[duration].floorPrice };
     }
     // Legacy catalog-rate fallback so booking never breaks without pricing rows.
     const unitPrice = duration === 'daily' ? Number(robot.daily_rate) : duration === 'weekly' ? Number(robot.weekly_rate) : Number(robot.monthly_rate);
     const units = duration === 'daily' ? days : duration === 'weekly' ? Math.ceil(days / 7) : Math.ceil(days / 30);
     const base = Math.round(unitPrice * units * 100) / 100;
-    return { duration, units, base, tax: 0, deposit: 0, total: base, effectiveDaily: days > 0 ? Math.round((base / days) * 100) / 100 : base, deliveryFee: delivery ? 45 : 0, protectionFee: damageProtection ? Math.round(base * 0.09 * 100) / 100 : 0, unitPrice, floorPrice: 0 };
-  }, [quote, duration, days, robot, delivery, damageProtection]);
+    return { duration, units, base, tax: 0, deposit: 0, total: base, effectiveDaily: days > 0 ? Math.round((base / days) * 100) / 100 : base, deliveryFee: 0, protectionFee: damageProtection ? Math.round(base * 0.09 * 100) / 100 : 0, unitPrice, floorPrice: 0 };
+  }, [quote, duration, days, robot, damageProtection]);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const datesValid = new Date(endDate) >= new Date(startDate);
@@ -312,16 +310,6 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
               <div className="space-y-2.5">
                 <label className="flex items-center justify-between gap-3 rounded-xl border border-ink-200 px-4 py-3 cursor-pointer hover:border-ink-300 transition-colors">
                   <span>
-                    <span className="text-sm font-semibold text-ink-900 block">Delivery & pickup</span>
-                    <span className="text-xs text-ink-500">Door-to-door transport for every rental.</span>
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-ink-500">{formatMoney(delivery ? 45 : 0)}</span>
-                    <input type="checkbox" checked={delivery} onChange={(e) => setDelivery(e.target.checked)} className="w-4 h-4 accent-brand-600" />
-                  </span>
-                </label>
-                <label className="flex items-center justify-between gap-3 rounded-xl border border-ink-200 px-4 py-3 cursor-pointer hover:border-ink-300 transition-colors">
-                  <span>
                     <span className="text-sm font-semibold text-ink-900 block">Damage protection</span>
                     <span className="text-xs text-ink-500">Covers accidental damage, 9% of the base price.</span>
                   </span>
@@ -373,7 +361,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     rows={2}
-                    placeholder="Client address, floor types, delivery instructions..."
+                    placeholder="Floor types, gate codes, anything we should know before pickup..."
                     className="w-full border border-ink-200 rounded-xl px-3 py-2.5 text-sm placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
                   />
                 </label>
@@ -392,12 +380,6 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                   <div className="flex items-center justify-between text-ink-600">
                     <span>Tax</span>
                     <span className="font-semibold text-ink-900">{formatMoney(totals.tax)}</span>
-                  </div>
-                )}
-                {totals.deliveryFee > 0 && (
-                  <div className="flex items-center justify-between text-ink-600">
-                    <span>Delivery & pickup</span>
-                    <span className="font-semibold text-ink-900">{formatMoney(totals.deliveryFee)}</span>
                   </div>
                 )}
                 {totals.protectionFee > 0 && (
@@ -439,7 +421,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                 )}
               </button>
               <p className="text-xs text-ink-400 text-center">
-                Free cancellation up to 48 hours before delivery. Prices include pickup and return conditions — no hidden fees at checkout.
+                Free cancellation up to 48 hours before your pickup. Prices include pickup and return conditions — no hidden fees at checkout.
               </p>
             </form>
 

@@ -125,7 +125,7 @@ export default function WelcomePage({ onAuthed }: Props) {
 
         <footer className="max-w-6xl w-full mx-auto px-4 sm:px-6 pb-8">
           <p className="text-xs text-ink-400">
-            © 2026 Rent-A-Robot Inc. Delivery, insurance and support included with every cleaning robot.
+            © 2026 Rent-A-Robot Inc. Pickup-only rentals — reserve online, collect in store.
           </p>
         </footer>
       </div>
