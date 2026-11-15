@@ -1,5 +1,7 @@
-import { ArrowRight, BarChart3, Bot, CalendarCheck, LogOut, Mail, MapPin, Phone, Sparkles, UserRound } from 'lucide-react';
-import type { ProviderProfile } from '@/lib/types';
+import { ArrowRight, BarChart3, Bot, CalendarCheck, Check, LogOut, Mail, MapPin, Pencil, Phone, Sparkles, Trash2, UserRound, X } from 'lucide-react';
+import { useState } from 'react';
+import type { OnboardingInput, ProviderProfile } from '@/lib/types';
+import { completeProviderOnboarding } from '@/lib/api';
 
 interface Props {
   userEmail: string;
@@ -7,15 +9,19 @@ interface Props {
   onBrowse: () => void;
   onViewBookings: () => void;
   onSignOut: () => void;
+  onAccountDeleted: () => void;
+  onProfileSaved: (profile: ProviderProfile) => void;
   isAdmin: boolean;
   onOpenPricingAdmin: () => void;
 }
 
 const providerTypeLabels: Record<string, string> = {
-  individual: 'Individual cleaner',
-  sole_proprietor: 'Sole proprietor',
-  cleaning_company: 'Cleaning company',
-  company_employee: 'Company employee',
+  individual: 'Individual Cleaner',
+  sole_proprietor: 'Sole Proprietor',
+  cleaning_company: 'Cleaning Company',
+  company_employee: 'Company Employee',
+  homeowner: 'Homeowner',
+  renter: 'Renter',
 };
 
 const experienceLabels: Record<string, string> = {
@@ -24,8 +30,100 @@ const experienceLabels: Record<string, string> = {
   experienced: 'Experienced operator',
 };
 
-export default function ProfilePage({ userEmail, profile, isAdmin, onBrowse, onViewBookings, onSignOut, onOpenPricingAdmin }: Props) {
+const languageOptions = ['English', 'Spanish', 'French', 'Other'];
+const providerTypeOptions = Object.entries(providerTypeLabels) as [string, string][];
+
+export default function ProfilePage({
+  userEmail,
+  profile,
+  onBrowse,
+  onViewBookings,
+  onSignOut,
+  onAccountDeleted,
+  onProfileSaved,
+  isAdmin,
+  onOpenPricingAdmin,
+}: Props) {
   const displayName = profile?.display_name || userEmail.split('@')[0];
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<OnboardingInput | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function startEdit() {
+    if (!profile) return;
+    setDraft({
+      full_legal_name: profile.full_legal_name,
+      display_name: profile.display_name,
+      mobile_phone: profile.mobile_phone,
+      preferred_contact_method: profile.preferred_contact_method,
+      preferred_language: profile.preferred_language,
+      provider_type: profile.provider_type,
+      legal_business_name: profile.legal_business_name ?? undefined,
+      public_business_name: profile.public_business_name ?? undefined,
+      business_structure: profile.business_structure ?? undefined,
+      business_address: profile.business_address ?? undefined,
+      business_website: profile.business_website ?? undefined,
+      ein_status: 'not_provided',
+      owner_representative_name: profile.owner_representative_name ?? undefined,
+      team_size: profile.team_size,
+      service_types: profile.service_types,
+      other_specialties: profile.other_specialties ?? undefined,
+      home_zip: profile.home_zip,
+      service_area_zips: profile.service_area_zips,
+      rates_include_platform_fee: profile.rates_include_platform_fee,
+      owned_equipment: profile.owned_equipment,
+      equipment_models: profile.equipment_models ?? undefined,
+      automation_experience: profile.automation_experience ?? '',
+      training_completed: profile.training_completed ?? undefined,
+    });
+    setSaveError(null);
+    setEditing(true);
+  }
+
+  function updateDraft<K extends keyof OnboardingInput>(key: K, value: OnboardingInput[K]) {
+    setDraft((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  async function saveEdit() {
+    if (!draft || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await completeProviderOnboarding({
+        ...draft,
+        full_legal_name: draft.full_legal_name.trim(),
+        display_name: draft.display_name.trim() || draft.full_legal_name.trim(),
+        mobile_phone: draft.mobile_phone.trim(),
+        home_zip: draft.home_zip.trim(),
+        service_area_zips: draft.service_area_zips.map((area) => area.trim()).filter(Boolean),
+      });
+      setEditing(false);
+      onProfileSaved(profile!);
+    } catch {
+      setSaveError('Could not save your changes. Please check the values and try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.rpc('delete_my_account');
+      if (error) throw error;
+      onAccountDeleted();
+    } catch {
+      setDeleteError('Could not delete your account. Please try again or contact support.');
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-ink-50">
@@ -75,30 +173,92 @@ export default function ProfilePage({ userEmail, profile, isAdmin, onBrowse, onV
 
         {profile ? (
           <section className="mt-6 bg-white rounded-3xl border border-ink-100 shadow-sm p-6 sm:p-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink-950">Provider profile</h2>
-            <dl className="mt-5 space-y-4 text-sm">
-              <Detail label="Mobile phone" value={profile.mobile_phone} icon={<Phone size={15} />} />
-              <Detail label="Preferred language" value={profile.preferred_language} />
-              <Detail
-                label="Services offered"
-                value={profile.service_types.length > 0 ? profile.service_types.join(', ') : 'Not set yet'}
-              />
-              <Detail label="Team size" value={profile.team_size <= 1 ? 'Just me' : `${profile.team_size} cleaners`} />
-              <Detail
-                label="Service area"
-                value={profile.service_area_zips.length > 0 ? profile.service_area_zips.join(', ') : profile.home_zip}
-                icon={<MapPin size={15} />}
-              />
-              <Detail
-                label="Equipment experience"
-                value={experienceLabels[profile.automation_experience] ?? profile.automation_experience}
-                icon={<Bot size={15} />}
-              />
-            </dl>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="flex-1 font-display text-lg font-bold tracking-tight text-ink-950 text-center sm:text-left">Customer Profile</h2>
+              {!editing && (
+                <button
+                  onClick={startEdit}
+                  className="inline-flex items-center gap-1.5 border border-ink-200 text-ink-800 hover:bg-ink-50 text-sm font-semibold px-3.5 py-2 rounded-xl transition-colors shrink-0"
+                >
+                  <Pencil size={15} /> Edit
+                </button>
+              )}
+            </div>
+
+            {editing && draft ? (
+              <div className="mt-5 space-y-3">
+                <EditField label="Full legal name" value={draft.full_legal_name} onChange={(v) => updateDraft('full_legal_name', v)} />
+                <EditField label="Mobile phone" value={draft.mobile_phone} onChange={(v) => updateDraft('mobile_phone', v)} type="tel" />
+                <EditDropdown
+                  label="Customer type"
+                  value={draft.provider_type}
+                  onChange={(v) => updateDraft('provider_type', v as ProviderProfile['provider_type'])}
+                  options={providerTypeOptions}
+                />
+                <EditDropdown
+                  label="Preferred language"
+                  value={draft.preferred_language}
+                  onChange={(v) => updateDraft('preferred_language', v)}
+                  options={languageOptions.map((l) => [l, l])}
+                />
+                <EditField label="Home or business ZIP code" value={draft.home_zip} onChange={(v) => updateDraft('home_zip', v)} />
+                <EditField
+                  label="Service areas (comma separated)"
+                  value={draft.service_area_zips.join(', ')}
+                  onChange={(v) => updateDraft('service_area_zips', v.split(',').map((a) => a.trim()).filter(Boolean))}
+                />
+                <EditDropdown
+                  label="Equipment experience"
+                  value={draft.automation_experience}
+                  onChange={(v) => updateDraft('automation_experience', v)}
+                  options={Object.entries(experienceLabels)}
+                />
+                {saveError && (
+                  <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">{saveError}</div>
+                )}
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={saveEdit}
+                    disabled={saving}
+                    className="inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-semibold px-5 py-3 rounded-xl transition-colors"
+                  >
+                    <Check size={17} /> {saving ? 'Saving...' : 'Save changes'}
+                  </button>
+                  <button
+                    onClick={() => { setEditing(false); setSaveError(null); }}
+                    disabled={saving}
+                    className="inline-flex items-center justify-center gap-2 border border-ink-200 text-ink-700 hover:bg-ink-50 font-semibold px-5 py-3 rounded-xl transition-colors"
+                  >
+                    <X size={17} /> Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <dl className="mt-5 space-y-4 text-sm">
+                <Detail label="Full legal name" value={profile.full_legal_name} />
+                <Detail label="Mobile phone" value={profile.mobile_phone} icon={<Phone size={15} />} />
+                <Detail label="Preferred language" value={profile.preferred_language} />
+                <Detail
+                  label="Services offered"
+                  value={profile.service_types.length > 0 ? profile.service_types.join(', ') : 'Not set yet'}
+                />
+                <Detail label="Team size" value={profile.team_size <= 1 ? 'Just me' : `${profile.team_size} cleaners`} />
+                <Detail
+                  label="Service area"
+                  value={profile.service_area_zips.length > 0 ? profile.service_area_zips.join(', ') : profile.home_zip}
+                  icon={<MapPin size={15} />}
+                />
+                <Detail
+                  label="Equipment experience"
+                  value={experienceLabels[profile.automation_experience] ?? profile.automation_experience ?? 'Not set yet'}
+                  icon={<Bot size={15} />}
+                />
+              </dl>
+            )}
           </section>
         ) : (
           <section className="mt-6 bg-brand-50 border border-brand-100 rounded-3xl p-6 sm:p-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-brand-950">Finish your provider setup</h2>
+            <h2 className="font-display text-lg font-bold tracking-tight text-brand-950 text-center">Finish Your Provider Setup</h2>
             <p className="mt-2 text-sm text-brand-900/80 leading-relaxed">
               Your provider profile has not been completed yet, so your bookings and robot access are limited. Contact support if you believe this is a mistake.
             </p>
@@ -107,7 +267,7 @@ export default function ProfilePage({ userEmail, profile, isAdmin, onBrowse, onV
 
         {isAdmin && (
           <section className="mt-6 bg-white rounded-3xl border border-ink-100 shadow-sm p-6 sm:p-8">
-            <h2 className="font-display text-lg font-bold tracking-tight text-ink-950">Operations</h2>
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink-950 text-center">Operations</h2>
             <button
               onClick={onOpenPricingAdmin}
               className="mt-4 w-full inline-flex items-center justify-center gap-2 border border-ink-200 text-ink-800 hover:bg-ink-50 font-semibold px-5 py-3 rounded-xl transition-colors"
@@ -118,16 +278,100 @@ export default function ProfilePage({ userEmail, profile, isAdmin, onBrowse, onV
         )}
 
         <section className="mt-6 bg-white rounded-3xl border border-ink-100 shadow-sm p-6 sm:p-8">
-          <h2 className="font-display text-lg font-bold tracking-tight text-ink-950">Account</h2>
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink-950 text-center">Account</h2>
           <button
             onClick={onSignOut}
-            className="mt-4 w-full inline-flex items-center justify-center gap-2 border border-red-200 text-red-600 hover:bg-red-50 font-semibold px-5 py-3 rounded-xl transition-colors"
+            className="mt-4 w-full inline-flex items-center justify-center gap-2 border border-ink-200 text-ink-800 hover:bg-ink-50 font-semibold px-5 py-3 rounded-xl transition-colors"
           >
             <LogOut size={17} /> Sign out
           </button>
+
+          {!confirmDelete ? (
+            <button
+              onClick={() => { setConfirmDelete(true); setDeleteError(null); }}
+              className="mt-3 w-full inline-flex items-center justify-center gap-2 border border-red-200 text-red-600 hover:bg-red-50 font-semibold px-5 py-3 rounded-xl transition-colors"
+            >
+              <Trash2 size={17} /> Delete Account
+            </button>
+          ) : (
+            <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-4">
+              <p className="text-sm font-semibold text-red-900">Delete your account permanently?</p>
+              <p className="mt-1 text-sm text-red-800/90 leading-relaxed">
+                This removes your profile, bookings and sign-in access. This cannot be undone.
+              </p>
+              {deleteError && <p className="mt-2 text-sm font-semibold text-red-900">{deleteError}</p>}
+              <div className="mt-3 flex gap-3">
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white font-semibold px-5 py-3 rounded-xl transition-colors"
+                >
+                  <Trash2 size={17} /> {deleting ? 'Deleting...' : 'Yes, delete everything'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  className="flex-1 border border-red-200 bg-white text-red-700 hover:bg-red-50 font-semibold px-5 py-3 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </main>
     </div>
+  );
+}
+
+function EditField({
+  label,
+  value,
+  onChange,
+  type = 'text',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold text-ink-700">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1.5 w-full border border-ink-200 rounded-xl px-3.5 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+      />
+    </label>
+  );
+}
+
+function EditDropdown({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: [string, string][];
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold text-ink-700">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1.5 w-full border border-ink-200 rounded-xl px-3.5 py-3 text-sm text-ink-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+      >
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>{optionLabel}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 
