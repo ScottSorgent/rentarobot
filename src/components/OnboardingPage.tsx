@@ -272,9 +272,9 @@ export default function OnboardingPage({ email, onComplete }: Props) {
                     options={[['none', 'New to automated equipment'], ['some', 'Some hands-on experience'], ['experienced', 'Experienced operator']]}
                   />
                   <div className="space-y-3 pt-2">
-                    <Agreement checked={providerAgreement} onChange={setProviderAgreement} title="Provider agreement" text="I agree to provide accurate business and service information and follow the provider requirements." />
-                    <Agreement checked={platformTerms} onChange={setPlatformTerms} title="Platform terms" text="I accept the terms for using Rent-A-Robot, including rentals, leases, support and account responsibilities." />
-                    <Agreement checked={privacyPolicy} onChange={setPrivacyPolicy} title="Privacy policy" text="I understand how my profile and service information are used to operate the platform." />
+                    <Agreement checked={providerAgreement} onChange={setProviderAgreement} title="Provider Agreement" text="I agree to provide accurate business and service information and follow the provider requirements." />
+                    <Agreement checked={platformTerms} onChange={setPlatformTerms} title="Platform Terms" text="I accept the terms for using Rent-A-Robot, including rentals, leases, support and account responsibilities." />
+                    <Agreement checked={privacyPolicy} onChange={setPrivacyPolicy} title="Privacy Policy" text="I understand how my profile and service information are used to operate the platform." />
                   </div>
                   <div className="rounded-2xl bg-brand-50 border border-brand-100 p-4 text-sm text-brand-950">
                     <p className="font-semibold">Payment setup stays secure.</p>
