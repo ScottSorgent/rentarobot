@@ -187,7 +187,7 @@ export default function CatalogPage({
                 onClick={() => void searchZip()}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-ink-950 hover:bg-ink-800 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors"
               >
-                Find city
+                Find City
               </button>
             </div>
             {zipError && <p className="text-xs text-red-700">{zipError}</p>}
