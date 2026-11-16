@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   userEmail: string;
-  active: 'home' | 'browse' | 'list';
+  active: 'home' | 'browse' | 'list' | 'bookings';
   onHome: () => void;
   onBrowse: () => void;
   onList: () => void;
@@ -26,10 +26,31 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
   }, []);
 
   const navItems = [
-    { id: 'home' as const, label: 'Home', onClick: onHome, icon: Home },
-    { id: 'browse' as const, label: 'Robotic Catalog', onClick: onBrowse, icon: Bot },
-    { id: 'list' as const, label: 'List Your Robot', onClick: onList, icon: PlusCircle },
+    {
+      id: 'home' as const,
+      label: 'Home',
+      onClick: onHome,
+      icon: Home,
+      idle: 'bg-white text-ink-500 border-ink-200 hover:bg-ink-50 hover:text-ink-800',
+    },
+    {
+      id: 'browse' as const,
+      label: 'Robotic Catalog',
+      onClick: onBrowse,
+      icon: Bot,
+      idle: 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 hover:text-sky-900',
+    },
+    {
+      id: 'list' as const,
+      label: 'List Your Robot',
+      onClick: onList,
+      icon: PlusCircle,
+      idle: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:text-emerald-900',
+    },
   ];
+
+  // Shared emphasis for the current page: tinted fill plus a darker stroke.
+  const activeClasses = 'bg-brand-100 text-brand-900 border-brand-700 ring-2 ring-brand-700 font-semibold';
 
   return (
     <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-ink-100">
@@ -47,7 +68,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
           <span className="font-display font-bold text-xl tracking-tight">Rent-A-Robot</span>
         </a>
 
-        <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
+        <nav className="hidden md:flex items-center gap-1.5 text-sm font-medium">
           {navItems.map((item) => {
             const isActive = active === item.id;
             return (
@@ -56,10 +77,8 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
                 type="button"
                 onClick={item.onClick}
                 aria-current={isActive ? 'page' : undefined}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                  isActive
-                    ? 'text-brand-700 bg-brand-50 font-semibold'
-                    : 'text-ink-600 hover:text-ink-900 hover:bg-ink-50'
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+                  isActive ? activeClasses : item.idle
                 }`}
               >
                 <item.icon size={15} /> {item.label}
@@ -69,16 +88,14 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
           <button
             type="button"
             onClick={onBookings}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-ink-600 hover:text-ink-900 hover:bg-ink-50 transition-colors"
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+              active === 'bookings'
+                ? activeClasses
+                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:text-amber-900'
+            }`
+            }
           >
             <PackageCheck size={15} /> My bookings
-          </button>
-          <button
-            type="button"
-            onClick={onList}
-            className="ml-2 inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-brand-600 text-white hover:bg-brand-500 font-semibold transition-colors"
-          >
-            <PlusCircle size={15} /> List Your Robot
           </button>
         </nav>
 
