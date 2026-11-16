@@ -1,16 +1,17 @@
-import { Bot, Home, LogOut, PackageCheck, User } from 'lucide-react';
+import { Bot, Home, LogOut, PackageCheck, PlusCircle, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   userEmail: string;
-  active: 'home' | 'browse';
+  active: 'home' | 'browse' | 'list';
   onHome: () => void;
   onBrowse: () => void;
+  onList: () => void;
   onBookings: () => void;
   onSignOut: () => void;
 }
 
-export default function AppHeader({ userEmail, active, onHome, onBrowse, onBookings, onSignOut }: Props) {
+export default function AppHeader({ userEmail, active, onHome, onBrowse, onList, onBookings, onSignOut }: Props) {
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
 
@@ -27,6 +28,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onBooki
   const navItems = [
     { id: 'home' as const, label: 'Home', onClick: onHome, icon: Home },
     { id: 'browse' as const, label: 'Robotic Catalog', onClick: onBrowse, icon: Bot },
+    { id: 'list' as const, label: 'List Your Robot', onClick: onList, icon: PlusCircle },
   ];
 
   return (
@@ -70,6 +72,13 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onBooki
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-ink-600 hover:text-ink-900 hover:bg-ink-50 transition-colors"
           >
             <PackageCheck size={15} /> My bookings
+          </button>
+          <button
+            type="button"
+            onClick={onList}
+            className="ml-2 inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-brand-600 text-white hover:bg-brand-500 font-semibold transition-colors"
+          >
+            <PlusCircle size={15} /> List Your Robot
           </button>
         </nav>
 

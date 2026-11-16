@@ -1,5 +1,14 @@
 import { supabase } from './supabase';
-import type { Booking, NewBooking, OnboardingInput, ProviderProfile, Robot } from './types';
+import type {
+  Booking,
+  GuardedBookingResult,
+  NewBooking,
+  OnboardingInput,
+  OwnerListingInput,
+  ProviderProfile,
+  Robot,
+} from './types';
+import type { CityInfo } from './types';
 import type { Hub, PricingSettings, RobotPricing } from './pricing';
 import { DEFAULT_SETTINGS } from './pricing';
 
@@ -30,6 +39,192 @@ export async function createBooking(input: NewBooking): Promise<void> {
     renter_email: input.renter_email.trim().toLowerCase(),
   });
   if (error) throw new Error(error.message);
+}
+
+// ---------- Marketplace: city lookup, guarded booking, owner + admin listings ----------
+
+export async function lookupZip(zip: string): Promise<CityInfo[]> {
+  const { data, error } = await supabase.rpc('lookup_zip', { p_zip: zip });
+  if (error) throw new Error('Could not look up that ZIP code.');
+  return (data ?? []) as CityInfo[];
+}
+
+export async function fetchCities(): Promise<CityInfo[]> {
+  const { data, error } = await supabase.from('cities').select('*').order('name');
+  if (error) throw new Error('Could not load the list of supported cities.');
+  return (data ?? []).map((c: { id: string; name: string; state: string; state_code: string }) => ({
+    city_id: c.id,
+    city_name: c.name,
+    state: c.state,
+    state_code: c.state_code,
+  }));
+}
+
+// The city-filtered catalog: published listings in the customer's city plus
+// the curated fleet. Works for signed-out visitors too.
+export async function fetchBookableRobots(cityId: string): Promise<Robot[]> {
+  const { data, error } = await supabase.rpc('bookable_robots', { p_city_id: cityId });
+  if (error) throw new Error('Could not load robots for your city.');
+  return (data ?? []) as Robot[];
+}
+
+export async function createBookingGuarded(input: {
+  robotId: string;
+  start: string;
+  months: number;
+  renterName: string;
+  renterEmail: string;
+  renterPhone: string;
+  usageType: string;
+  cityId: string;
+  notes: string;
+  damageProtection: boolean;
+  delivery: boolean;
+}): Promise<GuardedBookingResult> {
+  const { data, error } = await supabase.rpc('create_booking_guarded', {
+    p_robot_id: input.robotId,
+    p_start: input.start,
+    p_months: input.months,
+    p_renter_name: input.renterName,
+    p_renter_email: input.renterEmail.trim().toLowerCase(),
+    p_renter_phone: input.renterPhone,
+    p_usage_type: input.usageType,
+    p_city_id: input.cityId,
+    p_notes: input.notes,
+    p_damage_protection: input.damageProtection,
+    p_delivery: input.delivery,
+  });
+  if (error) throw new Error(error.message);
+  return data as GuardedBookingResult;
+}
+
+export async function cancelBookingGuarded(bookingId: string): Promise<void> {
+  const { error } = await supabase.rpc('cancel_booking_guarded', { p_booking_id: bookingId });
+  if (error) {
+    if (error.message.includes('own bookings')) {
+      throw new Error('You can only cancel your own reservations.');
+    }
+    throw new Error('Could not cancel the reservation. Please try again.');
+  }
+}
+
+export async function savePreferredCity(cityId: string | null, zip: string): Promise<void> {
+  const { error } = await supabase
+    .from('provider_profiles')
+    .update({ preferred_city_id: cityId, home_zip: zip })
+    .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '');
+  if (error) throw new Error('Could not save your city. Please try again.');
+}
+
+export async function uploadListingPhoto(file: File): Promise<string> {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('Sign in to upload photos.');
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage
+    .from('listing-photos')
+    .upload(path, file, { contentType: file.type, cacheControl: '3600', upsert: false });
+  if (error) throw new Error('The photo upload failed. Try a smaller JPG or PNG.');
+  return supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl;
+}
+
+export async function ownerCreateListing(input: OwnerListingInput, photoUrls: string[]): Promise<string> {
+  const { data, error } = await supabase.rpc('owner_create_listing', {
+    p_listing: input,
+    p_photo_urls: photoUrls,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function ownerUpdateListing(robotId: string, patch: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase.rpc('owner_update_listing', {
+    p_robot_id: robotId,
+    p_patch: patch,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function ownerSetListingStatus(robotId: string, status: string): Promise<void> {
+  const { error } = await supabase.rpc('owner_set_listing_status', {
+    p_robot_id: robotId,
+    p_status: status,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function adminReviewListing(robotId: string, action: string, note: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_review_listing', {
+    p_robot_id: robotId,
+    p_action: action,
+    p_note: note,
+  });
+  if (error) {
+    if (error.message.includes('Not authorized')) {
+      throw new Error('Only designated administrators can review listings.');
+    }
+    throw new Error('Could not record that review decision.');
+  }
+}
+
+export interface AdminReviewRow {
+  id: string;
+  name: string;
+  listing_status: string;
+  equipment_category: string | null;
+  monthly_rate: number | null;
+  daily_rate: number | null;
+  weekly_rate: number | null;
+  condition: string | null;
+  pickup_zip: string | null;
+  city_id: string | null;
+  image_url: string;
+  description: string;
+  accessories: string[] | null;
+  review_note: string | null;
+  submitted_at: string | null;
+  owner_email: string | null;
+}
+
+export async function fetchAdminReviewQueue(): Promise<AdminReviewRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_reviews');
+  if (error) {
+    if (error.message.includes('Not authorized')) {
+      throw new Error('Only designated administrators can view the review queue.');
+    }
+    throw new Error('Could not load the listing review queue.');
+  }
+  return (data ?? []) as AdminReviewRow[];
+}
+
+// Owner's own listings, readable through the SELECT policy's owner clause.
+export async function fetchMyListings(): Promise<Robot[]> {
+  const { data, error } = await supabase
+    .from('robots')
+    .select('*')
+    .eq('owner_id', (await supabase.auth.getUser()).data.user?.id ?? '00000000-0000-0000-0000-000000000000')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error('Could not load your listings.');
+  return (data ?? []) as Robot[];
+}
+
+// Reservations on the owner's listings (via the bookings robots join).
+export async function fetchOwnerReservations(): Promise<Booking[]> {
+  const userId = (await supabase.auth.getUser()).data.user?.id ?? '';
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*, robots!inner(id, name, owner_id, image_url)')
+    .eq('robots.owner_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error('Could not load reservations for your listings.');
+  return (data ?? []) as unknown as Booking[];
+}
+
+export async function createNotifyRequest(cityId: string, email: string): Promise<void> {
+  const { error } = await supabase
+    .from('notify_requests')
+    .insert({ city_id: cityId, email: email.trim().toLowerCase() });
+  if (error) throw new Error('Could not save your notification request.');
 }
 
 export async function fetchProviderProfile(): Promise<ProviderProfile | null> {
