@@ -13,8 +13,8 @@ import {
   UserRound,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import type { OnboardingInput, ProviderType } from '@/lib/types';
-import { completeProviderOnboarding } from '@/lib/api';
+import type { CityInfo, OnboardingInput, ProviderType } from '@/lib/types';
+import { completeProviderOnboarding, lookupZip, savePreferredCity } from '@/lib/api';
 
 interface Props {
   email: string;
@@ -51,6 +51,7 @@ const providerTypeOptions: [ProviderType, string][] = [
   ['company_employee', 'Employee joining an existing company'],
   ['homeowner', 'Homeowner'],
   ['renter', 'Renter'],
+  ['robot_owner', 'Robot Owner (rent out your robot)'],
 ];
 
 const businessStructureOptions = [
@@ -79,6 +80,8 @@ export default function OnboardingPage({ email, onComplete }: Props) {
   const [privacyPolicy, setPrivacyPolicy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [zipLookup, setZipLookup] = useState<CityInfo[] | null>(null);
+  const [zipChecking, setZipChecking] = useState(false);
 
   const isBusiness = ['sole_proprietor', 'cleaning_company', 'company_employee'].includes(form.provider_type);
 
@@ -98,11 +101,32 @@ export default function OnboardingPage({ email, onComplete }: Props) {
     }
     if (step === 2) {
       if (form.home_zip.trim().length < 3) return 'Please enter your home or business ZIP code.';
+      if (!zipLookup || zipLookup.length === 0) return 'Check your ZIP code so we can save your city.';
       if (form.service_area_zips.length === 0) return 'Add at least one city or ZIP code you serve.';
       if (!form.automation_experience) return 'Please tell us about your automated-equipment experience.';
       if (!providerAgreement || !platformTerms || !privacyPolicy) return 'Accept all three agreements to finish setup.';
     }
     return null;
+  }
+
+  async function checkZip(zip: string) {
+    const cleaned = zip.trim();
+    if (cleaned.length < 5) {
+      setZipLookup(null);
+      return;
+    }
+    setZipChecking(true);
+    try {
+      const matches = await lookupZip(cleaned);
+      setZipLookup(matches);
+      if (matches.length > 0) {
+        update('preferred_city_id', matches[0].city_id);
+      }
+    } catch {
+      setZipLookup(null);
+    } finally {
+      setZipChecking(false);
+    }
   }
 
   function nextStep() {
@@ -134,6 +158,9 @@ export default function OnboardingPage({ email, onComplete }: Props) {
         home_zip: form.home_zip.trim(),
         service_area_zips: form.service_area_zips.map((area) => area.trim()).filter(Boolean),
       });
+      if (form.preferred_city_id) {
+        await savePreferredCity(form.preferred_city_id, form.home_zip.trim());
+      }
       await onComplete();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not finish setup. Please try again.');
@@ -262,7 +289,50 @@ export default function OnboardingPage({ email, onComplete }: Props) {
               >
                 <div className="space-y-3">
                   <div className="grid sm:grid-cols-2 gap-3">
-                    <Field label="Home or business ZIP code" value={form.home_zip} onChange={(value) => update('home_zip', value)} placeholder="94107" required />
+                    <div>
+                      <label className="block">
+                        <span className="text-xs font-semibold text-ink-700">City ZIP code *</span>
+                        <input
+                          type="text"
+                          value={form.home_zip}
+                          onChange={(event) => {
+                            update('home_zip', event.target.value);
+                            void checkZip(event.target.value);
+                          }}
+                          placeholder="95202"
+                          className="mt-1.5 w-full border border-ink-200 rounded-xl px-3.5 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                        />
+                      </label>
+                      {zipChecking && <span className="mt-1.5 block text-xs text-ink-500">Checking your city...</span>}
+                      {!zipChecking && zipLookup && zipLookup.length > 0 && (
+                        <span className="mt-1.5 block text-xs font-medium text-green-700">
+                          {zipLookup.length === 1
+                            ? `Your city: ${zipLookup[0].city_name}, ${zipLookup[0].state_code}`
+                            : `Your ZIP covers several cities — pick one below.`}
+                        </span>
+                      )}
+                      {!zipChecking && zipLookup && zipLookup.length === 0 && (
+                        <span className="mt-1.5 block text-xs text-red-700">
+                          We don't serve that ZIP yet. Enter a ZIP in a supported city.
+                        </span>
+                      )}
+                    </div>
+                    {zipLookup && zipLookup.length > 1 && (
+                      <label className="block">
+                        <span className="text-xs font-semibold text-ink-700">Your city *</span>
+                        <select
+                          value={form.preferred_city_id ?? ''}
+                          onChange={(event) => update('preferred_city_id', event.target.value)}
+                          className="mt-1.5 w-full appearance-none border border-ink-200 rounded-xl px-3.5 py-3 text-sm text-ink-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                        >
+                          {zipLookup.map((city) => (
+                            <option key={city.city_id} value={city.city_id}>
+                              {city.city_name}, {city.state_code}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <Field label="Cities or ZIP codes served" value={form.service_area_zips.join(', ')} onChange={(value) => update('service_area_zips', value.split(',').map((area) => area.trim()).filter(Boolean))} placeholder="94107, 94110, San Francisco" required hint="Separate multiple areas with commas." />
                   </div>
                   <DropdownField

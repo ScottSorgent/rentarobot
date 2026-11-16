@@ -1,10 +1,10 @@
 import { AlertTriangle, BarChart3, History, Lock, Save, ShieldCheck, TrendingUp, UserPlus, UserMinus } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Robot } from '@/lib/types';
 import { formatMoney } from '@/lib/types';
 import type { Hub, PricingSettings, RobotPricing, UtilizationRow } from '@/lib/pricing';
 import { round2, utilizationTable, UTILIZATION_LEVELS } from '@/lib/pricing';
-import { applyCatalogRates, fetchAdminList, removeAdmin, addAdminByEmail, savePlatformSettings } from '@/lib/api';
+import { applyCatalogRates, fetchAdminList, removeAdmin, addAdminByEmail, savePlatformSettings, adminReviewListing, fetchAdminReviewQueue, type AdminReviewRow } from '@/lib/api';
 
 interface Props {
   robots: Robot[];
@@ -21,6 +21,36 @@ interface Props {
 type ListingDraft = Pick<RobotPricing, 'robot_id' | 'owner_monthly_price' | 'min_lease_months_override' | 'hub_id'>;
 
 export default function PricingAdminPage({ robots, pricingByRobot, settings, hubs, audit, isAdmin, currentUserId, onBack, onDataChanged }: Props) {
+  const [reviewQueue, setReviewQueue] = useState<AdminReviewRow[] | null>(null);
+  const [reviewBusy, setReviewBusy] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+
+  const loadReviewQueue = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      setReviewQueue(await fetchAdminReviewQueue());
+    } catch {
+      setReviewQueue(null);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    void loadReviewQueue();
+  }, [loadReviewQueue]);
+
+  async function review(id: string, action: string) {
+    setReviewBusy(id);
+    setReviewError(null);
+    try {
+      await adminReviewListing(id, action, '');
+      await loadReviewQueue();
+    } catch (cause) {
+      setReviewError(cause instanceof Error ? cause.message : 'Could not record the review decision.');
+    } finally {
+      setReviewBusy(null);
+    }
+  }
+
   const [utilizationLevel, setUtilizationLevel] = useState<0.6 | 0.7 | 0.8 | 0.9 | 1.0>(0.8);
   const [editingRobotId, setEditingRobotId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ListingDraft | null>(null);
@@ -198,6 +228,52 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8 pb-28 md:pb-12">
+
+        {reviewQueue && reviewQueue.length > 0 && (
+          <section className="bg-white rounded-3xl border border-ink-100 shadow-sm p-6">
+            <h2 className="font-display text-lg font-bold tracking-tight text-ink-950">Listing Review Queue</h2>
+            <p className="mt-1 text-sm text-ink-500">Owner-submitted listings waiting for a decision. Approving makes the listing visible in its city.</p>
+            {reviewError && <div className="mt-3 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">{reviewError}</div>}
+            <div className="mt-4 space-y-3">
+              {reviewQueue.map((row) => (
+                <div key={row.id} className="flex flex-col sm:flex-row gap-4 rounded-2xl border border-ink-100 p-4">
+                  <img src={row.image_url} alt={row.name} className="w-full sm:w-32 h-28 sm:h-auto object-cover rounded-xl border border-ink-100 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold text-ink-950">{row.name}</h3>
+                      <span className="text-xs font-semibold border border-ink-200 rounded-full px-2 py-0.5 text-ink-600">{row.listing_status.replace('_', ' ')}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-ink-500">
+                      Owner: {row.owner_email ?? 'unknown'} · ZIP {row.pickup_zip ?? '—'} · city {row.city_id ?? '—'} · condition {row.condition ?? '—'}
+                    </p>
+                    <p className="mt-1.5 text-sm text-ink-600 line-clamp-2">{row.description}</p>
+                    <p className="mt-1 text-sm font-semibold text-ink-900">
+                      {row.monthly_rate ? `$${Number(row.monthly_rate).toFixed(2)}/month` : ''}
+                      {row.daily_rate ? ` · $${Number(row.daily_rate).toFixed(2)}/day` : ''}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {[
+                        ['approved', 'Approve', 'bg-green-600 hover:bg-green-500 text-white'],
+                        ['changes_requested', 'Request changes', 'border border-amber-300 text-amber-800 hover:bg-amber-50'],
+                        ['rejected', 'Reject', 'border border-red-200 text-red-700 hover:bg-red-50'],
+                        ['suspended', 'Suspend', 'border border-ink-200 text-ink-700 hover:bg-ink-50'],
+                      ].map(([action, label, cls]) => (
+                        <button
+                          key={action}
+                          disabled={reviewBusy === row.id}
+                          onClick={() => void review(row.id, action)}
+                          className={`text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors disabled:opacity-40 ${cls}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {adminError && (
           <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">{adminError}</div>
         )}
@@ -306,7 +382,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                         <SelectField
                           label="Distribution hub"
                           value={draft.hub_id ?? ''}
-                          options={[['', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
+                          options={[[ '', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
                           onChange={(v) => setDraft({ ...draft, hub_id: v || null })}
                         />
                       </div>

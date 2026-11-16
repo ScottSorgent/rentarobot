@@ -1,7 +1,7 @@
-import { ArrowLeft, Building2, Calendar, Check, Home, MapPin, ShieldCheck, Star, Wrench } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar, Check, Home, MapPin, ShieldCheck, Star, Truck, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { NewBooking, Robot, RobotCategory, DurationType } from '@/lib/types';
-import { daysBetween, monthsBetween, weeksBetween, formatMoney, PRICING_VERSION, isHumanoid, statusLabel } from '@/lib/types';
+import type { Robot, RobotCategory } from '@/lib/types';
+import { daysBetween, monthsBetween, weeksBetween, formatMoney, isHumanoid, statusLabel } from '@/lib/types';
 import type { OwnerRates, PricingSettings, RentalDuration, RobotPricing } from '@/lib/pricing';
 import { quoteRental, rateForDuration, splitPayment } from '@/lib/pricing';
 
@@ -11,8 +11,22 @@ interface Props {
   settings: PricingSettings;
   submitting: boolean;
   submitError: string | null;
+  customerCityId: string | null;
+  customerCityName: string | null;
   onBack: () => void;
-  onSubmit: (booking: NewBooking) => void;
+  onSubmitGuarded: (input: {
+    robotId: string;
+    start: string;
+    months: number;
+    renterName: string;
+    renterEmail: string;
+    renterPhone: string;
+    usageType: string;
+    cityId: string;
+    notes: string;
+    damageProtection: boolean;
+    delivery: boolean;
+  }) => void;
   onViewBookings: () => void;
 }
 
@@ -50,7 +64,7 @@ const UNIT_PER: Record<RentalDuration, string> = {
 
 const DURATIONS: RentalDuration[] = ['daily', 'weekly', 'monthly'];
 
-export default function RobotDetailPage({ robot, pricing, settings, submitting, submitError, onBack, onSubmit, onViewBookings }: Props) {
+export default function RobotDetailPage({ robot, pricing, settings, submitting, submitError, customerCityId, customerCityName, onBack, onSubmitGuarded, onViewBookings }: Props) {
   const humanoid = isHumanoid(robot);
   const offeredDurations: RentalDuration[] = humanoid ? DURATIONS : ['monthly'];
 
@@ -59,6 +73,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
   const [startDate, setStartDate] = useState(todayStr());
   const [usageType, setUsageType] = useState<RobotCategory>(robot.category);
   const [damageProtection, setDamageProtection] = useState(false);
+  const [delivery, setDelivery] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -90,8 +105,9 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
     if (unitPrice == null) return null;
     const q = quoteRental(rates, duration, units, settings);
     const protectionFee = damageProtection ? Math.round(q.subtotal * 0.09 * 100) / 100 : 0;
-    return { ...q, protectionFee, total: Math.round((q.total + protectionFee) * 100) / 100 };
-  }, [rates, duration, unitPrice, units, settings, damageProtection]);
+    const deliveryFee = delivery && robot.delivery_available ? Math.round(Number(robot.delivery_fee ?? 0) * 100) / 100 : 0;
+    return { ...q, protectionFee, deliveryFee, total: Math.round((q.total + protectionFee + deliveryFee) * 100) / 100 };
+  }, [rates, duration, unitPrice, units, settings, damageProtection, delivery, robot]);
 
   const split = useMemo(
     () => (totals ? splitPayment(totals.subtotal, settings, duration) : null),
@@ -104,40 +120,19 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
     e.preventDefault();
     setTouched(true);
     if (!name.trim() || name.trim().length <= 1 || !emailValid || submitting || !totals) return;
-    const snapshot = {
-      duration_type: duration as DurationType,
-      unit_price: unitPrice ?? 0,
-      units: totals.units,
-      base_price: totals.subtotal,
-      tax_amount: totals.tax,
-      deposit_amount: 0,
-      delivery_fee: 0,
-      damage_protection_fee: totals.protectionFee,
-      total_price: totals.total,
-      service_fee: 0,
-      minimum_term_months: duration === 'monthly' ? minMonths : null,
-      pricing_version: PRICING_VERSION,
-      recorded_at: new Date().toISOString(),
-    };
-    onSubmit({
-      robot_id: robot.id,
-      renter_name: name.trim(),
-      renter_email: email.trim(),
-      renter_phone: phone.trim() || undefined,
-      usage_type: usageType,
-      plan_type: duration === 'monthly' ? 'lease' : 'rental',
-      start_date: startDate,
-      end_date: endDate,
-      days,
-      total_price: totals.total,
-      notes: notes.trim() || undefined,
-      pricing_snapshot: snapshot,
-      duration_type: duration,
-      minimum_term_months: duration === 'monthly' ? minMonths : null,
-      deposit_amount: 0,
-      delivery_fee: 0,
-      damage_protection_fee: totals.protectionFee,
-      tax_amount: totals.tax,
+    if (duration !== 'monthly') return; // server books monthly only
+    onSubmitGuarded({
+      robotId: robot.id,
+      start: startDate,
+      months: units,
+      renterName: name.trim(),
+      renterEmail: email.trim(),
+      renterPhone: phone.trim(),
+      usageType: usageType,
+      cityId: customerCityId ?? '',
+      notes: notes.trim(),
+      damageProtection,
+      delivery: delivery && Boolean(robot.delivery_available),
     });
   }
 
@@ -280,7 +275,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                     type="date"
                     value={endDate}
                     readOnly
-                    className="w-full border border-ink-200 rounded-xl px-3 py-2.5 text-sm bg-ink-50 text-ink-500"
+                    className="w-full border border-ink-200 rounded-xl px-3 py-2 text-sm bg-ink-50 text-ink-500"
                   />
                 </label>
               </div>
@@ -346,6 +341,17 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                     <input type="checkbox" checked={damageProtection} onChange={(e) => setDamageProtection(e.target.checked)} className="w-4 h-4 accent-brand-600" />
                   </span>
                 </label>
+                {robot.delivery_available && (
+                  <label className="flex items-center justify-between gap-3 rounded-xl border border-ink-200 px-4 py-3 cursor-pointer hover:border-ink-300 transition-colors">
+                    <span>
+                      <span className="text-sm font-semibold text-ink-900 block flex items-center gap-2"><Truck size={15} /> Owner delivery</span>
+                      <span className="text-xs text-ink-500">
+                        Have the owner bring the robot to you within {customerCityName ?? 'your city'} for {formatMoney(Number(robot.delivery_fee ?? 0))}. Local pickup is always free.
+                      </span>
+                    </span>
+                    <input type="checkbox" checked={delivery} onChange={(e) => setDelivery(e.target.checked)} className="w-4 h-4 accent-brand-600" />
+                  </label>
+                )}
               </div>
 
               <div className="space-y-3">
@@ -418,6 +424,12 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                       <span className="font-semibold text-ink-900">{formatMoney(totals.protectionFee)}</span>
                     </div>
                   )}
+                  {totals.deliveryFee > 0 && (
+                    <div className="flex items-center justify-between text-ink-600">
+                      <span>Owner delivery</span>
+                      <span className="font-semibold text-ink-900">{formatMoney(totals.deliveryFee)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between pt-2 border-t border-ink-200 text-base">
                     <span className="font-semibold text-ink-900">Total due today</span>
                     <span className="font-display font-bold text-xl text-ink-900">{formatMoney(totals.total)}</span>
@@ -448,7 +460,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                 )}
               </button>
               <p className="text-xs text-ink-400 text-center">
-                Free cancellation up to 48 hours before your pickup. The platform's commission is paid by the owner from their payout — it never increases your price.
+                Free cancellation up to 48 hours before your pickup. The owner's exact pickup address is shared after your booking is confirmed. The platform's commission is paid by the owner from their payout — it never increases your price.
               </p>
             </form>
 
