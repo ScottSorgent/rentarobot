@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Bot, Building2, Home } from 'lucide-react';
 import type { Robot } from '@/lib/types';
-import { formatMoney } from '@/lib/types';
+import { formatMoney, isHumanoid } from '@/lib/types';
 import AppHeader from '@/components/AppHeader';
 
 interface Props {
@@ -23,14 +23,14 @@ const categories = [
 
 type CategoryId = (typeof categories)[number]['id'];
 
-const statusBadge: Record<string, { label: string; classes: string }> = {
-  available: { label: 'Available now', classes: 'bg-brand-100 text-brand-800' },
-  rented: { label: 'On rental', classes: 'bg-amber-100 text-amber-800' },
-  maintenance: { label: 'Maintenance', classes: 'bg-ink-200 text-ink-700' },
-};
-
+// Catalog cards show ONE rate per robot: monthly only for specialized
+// cleaning robots, daily only for humanoid household robots. Availability
+// status lives on the product page, not here.
 function RobotCard({ robot, onOpen, delay }: { robot: Robot; onOpen: (r: Robot) => void; delay: number }) {
-  const badge = statusBadge[robot.status] ?? statusBadge.available;
+  const humanoid = isHumanoid(robot);
+  const price = humanoid ? Number(robot.daily_rate ?? 0) : Number(robot.monthly_rate);
+  const unit = humanoid ? '/day' : '/month';
+  const label = humanoid ? 'Daily Rental' : 'Monthly Rental';
   return (
     <button
       onClick={() => onOpen(robot)}
@@ -44,9 +44,6 @@ function RobotCard({ robot, onOpen, delay }: { robot: Robot; onOpen: (r: Robot) 
           loading="lazy"
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
-        <span className={`absolute top-3 left-3 px-2.5 py-1 rounded-full text-xs font-semibold ${badge.classes}`}>
-          {badge.label}
-        </span>
         <span className="absolute bottom-3 right-3 bg-white/95 backdrop-blur px-2.5 py-1 rounded-full text-xs font-semibold text-ink-900 flex items-center gap-1">
           ★ {robot.rating.toFixed(1)}
         </span>
@@ -63,10 +60,10 @@ function RobotCard({ robot, onOpen, delay }: { robot: Robot; onOpen: (r: Robot) 
         </h3>
         <p className="mt-1 text-sm text-ink-500 line-clamp-2 leading-relaxed">{robot.tagline}</p>
         <div className="mt-4 flex items-baseline gap-1.5">
-          <span className="text-2xl font-display font-bold text-ink-900">{formatMoney(robot.monthly_rate)}</span>
-          <span className="text-sm text-ink-500">/month</span>
+          <span className="text-2xl font-display font-bold text-ink-900">{formatMoney(price)}</span>
+          <span className="text-sm text-ink-500">{unit}</span>
           <span className="ml-auto text-xs font-medium text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-2 py-0.5">
-            Peer-to-peer lease
+            {label}
           </span>
         </div>
       </div>

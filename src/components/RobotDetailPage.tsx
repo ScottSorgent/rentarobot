@@ -1,9 +1,9 @@
 import { ArrowLeft, Building2, Calendar, Check, Home, MapPin, ShieldCheck, Star, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { NewBooking, Robot, RobotCategory } from '@/lib/types';
-import { daysBetween, monthsBetween, formatMoney, PRICING_VERSION } from '@/lib/types';
-import type { PricingSettings, RobotPricing } from '@/lib/pricing';
-import { quoteRenterMonthly } from '@/lib/pricing';
+import type { NewBooking, Robot, RobotCategory, DurationType } from '@/lib/types';
+import { daysBetween, monthsBetween, weeksBetween, formatMoney, PRICING_VERSION, isHumanoid, statusLabel } from '@/lib/types';
+import type { OwnerRates, PricingSettings, RentalDuration, RobotPricing } from '@/lib/pricing';
+import { quoteRental, rateForDuration, splitPayment } from '@/lib/pricing';
 
 interface Props {
   robot: Robot;
@@ -20,16 +20,43 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function datePlusMonths(date: string, months: number): string {
-  const next = new Date(`${date}T00:00:00`);
-  next.setMonth(next.getMonth() + months);
-  next.setDate(next.getDate() - 1);
-  return next.toISOString().slice(0, 10);
+function addDuration(startDate: string, duration: RentalDuration, units: number): string {
+  const d = new Date(`${startDate}T00:00:00`);
+  if (duration === 'monthly') d.setMonth(d.getMonth() + units);
+  else if (duration === 'weekly') d.setDate(d.getDate() + units * 7);
+  else d.setDate(d.getDate() + units);
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
+// Booking length in duration units.
+function unitsInSpan(duration: RentalDuration, start: string, end: string): number {
+  if (duration === 'monthly') return monthsBetween(start, end);
+  if (duration === 'weekly') return weeksBetween(start, end);
+  return daysBetween(start, end);
+}
+
+const DURATION_LABEL: Record<RentalDuration, string> = {
+  daily: 'Daily Rental',
+  weekly: 'Weekly Rental',
+  monthly: 'Monthly Rental',
+};
+
+const UNIT_PER: Record<RentalDuration, string> = {
+  daily: '/day',
+  weekly: '/week',
+  monthly: '/month',
+};
+
+const DURATIONS: RentalDuration[] = ['daily', 'weekly', 'monthly'];
+
 export default function RobotDetailPage({ robot, pricing, settings, submitting, submitError, onBack, onSubmit, onViewBookings }: Props) {
+  const humanoid = isHumanoid(robot);
+  const offeredDurations: RentalDuration[] = humanoid ? DURATIONS : ['monthly'];
+
+  const [duration, setDuration] = useState<RentalDuration>('monthly');
+  const [units, setUnits] = useState(1);
   const [startDate, setStartDate] = useState(todayStr());
-  const [months, setMonths] = useState(Math.max(1, settings.min_lease_months));
   const [usageType, setUsageType] = useState<RobotCategory>(robot.category);
   const [damageProtection, setDamageProtection] = useState(false);
   const [name, setName] = useState('');
@@ -42,36 +69,53 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
     window.scrollTo({ top: 0 });
   }, []);
 
-  const endDate = useMemo(() => datePlusMonths(startDate, months), [startDate, months]);
+  const rates: OwnerRates = useMemo(() => ({
+    monthly: pricing && pricing.owner_monthly_price > 0 ? pricing.owner_monthly_price : Number(robot.monthly_rate),
+    daily: robot.daily_rate != null ? Number(robot.daily_rate) : null,
+    weekly: robot.weekly_rate != null ? Number(robot.weekly_rate) : null,
+  }), [pricing, robot]);
+
+  // Humanoid cards advertise the daily rate; open the picker there.
+  useEffect(() => {
+    if (humanoid && rateForDuration(rates, 'daily') != null) setDuration('daily');
+  }, [humanoid, rates]);
+
+  const minMonths = pricing?.min_lease_months_override ?? settings.min_lease_months;
+  const unitPrice = rateForDuration(rates, duration);
+
+  const endDate = useMemo(() => addDuration(startDate, duration, units), [startDate, duration, units]);
   const days = useMemo(() => daysBetween(startDate, endDate), [startDate, endDate]);
 
-  const listPrice = pricing ? pricing.owner_monthly_price : Number(robot.monthly_rate);
-  const minMonths = pricing?.min_lease_months_override ?? settings.min_lease_months;
-
   const totals = useMemo(() => {
-    const q = quoteRenterMonthly(listPrice, settings, months);
-    const protectionFee = damageProtection ? Math.round(q.listPrice * 0.09 * 100) / 100 : 0;
+    if (unitPrice == null) return null;
+    const q = quoteRental(rates, duration, units, settings);
+    const protectionFee = damageProtection ? Math.round(q.subtotal * 0.09 * 100) / 100 : 0;
     return { ...q, protectionFee, total: Math.round((q.total + protectionFee) * 100) / 100 };
-  }, [listPrice, settings, months, damageProtection]);
+  }, [rates, duration, unitPrice, units, settings, damageProtection]);
+
+  const split = useMemo(
+    () => (totals ? splitPayment(totals.subtotal, settings, duration) : null),
+    [totals, settings, duration],
+  );
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
-    if (!name.trim() || name.trim().length <= 1 || !emailValid || submitting) return;
+    if (!name.trim() || name.trim().length <= 1 || !emailValid || submitting || !totals) return;
     const snapshot = {
-      duration_type: 'monthly' as const,
-      unit_price: listPrice,
-      units: months,
-      base_price: totals.listPrice,
+      duration_type: duration as DurationType,
+      unit_price: unitPrice ?? 0,
+      units: totals.units,
+      base_price: totals.subtotal,
       tax_amount: totals.tax,
       deposit_amount: 0,
       delivery_fee: 0,
       damage_protection_fee: totals.protectionFee,
       total_price: totals.total,
-      service_fee: totals.serviceFee,
-      minimum_term_months: minMonths,
+      service_fee: 0,
+      minimum_term_months: duration === 'monthly' ? minMonths : null,
       pricing_version: PRICING_VERSION,
       recorded_at: new Date().toISOString(),
     };
@@ -81,15 +125,15 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
       renter_email: email.trim(),
       renter_phone: phone.trim() || undefined,
       usage_type: usageType,
-      plan_type: 'lease',
+      plan_type: duration === 'monthly' ? 'lease' : 'rental',
       start_date: startDate,
       end_date: endDate,
       days,
       total_price: totals.total,
       notes: notes.trim() || undefined,
       pricing_snapshot: snapshot,
-      duration_type: 'monthly',
-      minimum_term_months: minMonths,
+      duration_type: duration,
+      minimum_term_months: duration === 'monthly' ? minMonths : null,
       deposit_amount: 0,
       delivery_fee: 0,
       damage_protection_fee: totals.protectionFee,
@@ -97,7 +141,12 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
     });
   }
 
-  const monthOptions = [1, 3, 6, 12].filter((m) => m >= minMonths);
+  const statusStyles: Record<string, string> = {
+    available: 'bg-brand-50 text-brand-800 border-brand-200',
+    rented: 'bg-amber-50 text-amber-800 border-amber-200',
+    maintenance: 'bg-ink-100 text-ink-700 border-ink-200',
+  };
+  const bookable = robot.status === 'available';
 
   return (
     <div className="min-h-screen">
@@ -170,36 +219,48 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
           <div className="lg:sticky lg:top-24 self-start w-full">
             <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-ink-100 shadow-sm p-6 space-y-5">
               <div>
-                <p className="font-display text-2xl font-bold text-ink-900">
-                  {formatMoney(listPrice)}
-                  <span className="text-sm font-medium text-ink-500">/month, listed by the owner</span>
-                </p>
-                <p className="text-xs text-ink-500 mt-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  {offeredDurations.map((d) => {
+                    const p = rateForDuration(rates, d);
+                    if (p == null) return null;
+                    return (
+                      <span key={d} className="text-sm font-semibold text-ink-900">
+                        {DURATION_LABEL[d]} — {formatMoney(p)}{UNIT_PER[d]}
+                      </span>
+                    );
+                  })}
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${statusStyles[robot.status] ?? statusStyles.available}`}>
+                    {statusLabel(robot.status)}
+                  </span>
+                </div>
+                <p className="text-xs text-ink-500 mt-2">
                   Peer-to-peer exchange: you rent directly from the robot's owner, coordinated through Rent-A-Robot.
                 </p>
               </div>
 
               <div>
-                <span className="text-xs font-semibold text-ink-600 mb-2 block">Lease length</span>
-                <div className="grid grid-cols-4 gap-2">
-                  {monthOptions.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setMonths(m)}
-                      className={`rounded-xl border px-2 py-2.5 text-sm font-semibold transition-all ${
-                        months === m
-                          ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-200 text-brand-800'
-                          : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300'
-                      }`}
-                    >
-                      {m} mo{m > 1 ? 's' : ''}
-                    </button>
-                  ))}
+                <span className="text-xs font-semibold text-ink-600 mb-2 block">Rental duration</span>
+                <div className={`grid gap-2 ${offeredDurations.length === 3 ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                  {offeredDurations.map((d) => {
+                    const p = rateForDuration(rates, d);
+                    if (p == null) return null;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => { setDuration(d); setUnits(1); }}
+                        className={`rounded-xl border px-2 py-2.5 text-sm font-semibold transition-all ${
+                          duration === d
+                            ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-200 text-brand-800'
+                            : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300'
+                        }`}
+                      >
+                        {DURATION_LABEL[d]}
+                        <span className="block text-xs font-normal text-ink-500 mt-0.5">{formatMoney(p)}{UNIT_PER[d]}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-                {minMonths > 1 && (
-                  <p className="text-xs text-ink-500 mt-1.5">This owner requires a {minMonths}-month minimum.</p>
-                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -222,6 +283,36 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                     className="w-full border border-ink-200 rounded-xl px-3 py-2.5 text-sm bg-ink-50 text-ink-500"
                   />
                 </label>
+              </div>
+
+              <div>
+                <span className="text-xs font-semibold text-ink-600 mb-2 block">
+                  How many {duration === 'monthly' ? 'months' : duration === 'weekly' ? 'weeks' : 'days'}?
+                </span>
+                <div className="grid grid-cols-4 gap-2">
+                  {(duration === 'monthly'
+                    ? [1, 3, 6, 12].filter((m) => m >= minMonths)
+                    : duration === 'weekly'
+                      ? [1, 2, 4, 8]
+                      : [1, 3, 7, 14]
+                  ).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setUnits(n)}
+                      className={`rounded-xl border px-2 py-2.5 text-sm font-semibold transition-all ${
+                        units === n
+                          ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-200 text-brand-800'
+                          : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                {duration === 'monthly' && minMonths > 1 && (
+                  <p className="text-xs text-ink-500 mt-1.5">This owner requires a {minMonths}-month minimum.</p>
+                )}
               </div>
 
               <div>
@@ -249,7 +340,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                 <label className="flex items-center justify-between gap-3 rounded-xl border border-ink-200 px-4 py-3 cursor-pointer hover:border-ink-300 transition-colors">
                   <span>
                     <span className="text-sm font-semibold text-ink-900 block">Damage protection</span>
-                    <span className="text-xs text-ink-500">Covers accidental damage, 9% of the monthly price.</span>
+                    <span className="text-xs text-ink-500">Covers accidental damage, 9% of the rental subtotal.</span>
                   </span>
                   <span className="flex items-center gap-2">
                     <input type="checkbox" checked={damageProtection} onChange={(e) => setDamageProtection(e.target.checked)} className="w-4 h-4 accent-brand-600" />
@@ -305,36 +396,34 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                 </label>
               </div>
 
-              <div className="rounded-xl bg-ink-50 border border-ink-100 p-4 space-y-2 text-sm">
-                <div className="flex items-center justify-between text-ink-600">
-                  <span className="inline-flex items-center gap-2"><Calendar size={15} /> Lease period</span>
-                  <span className="font-semibold text-ink-900">{months} month{months > 1 ? 's' : ''} · {startDate} to {endDate}</span>
-                </div>
-                <div className="flex items-center justify-between text-ink-600">
-                  <span>Owner's monthly price ({months} × {formatMoney(listPrice)})</span>
-                  <span className="font-semibold text-ink-900">{formatMoney(totals.listPrice)}</span>
-                </div>
-                <div className="flex items-center justify-between text-ink-600">
-                  <span>Service fee</span>
-                  <span className="font-semibold text-ink-900">{formatMoney(totals.serviceFee)}</span>
-                </div>
-                {totals.tax > 0 && (
+              {totals && (
+                <div className="rounded-xl bg-ink-50 border border-ink-100 p-4 space-y-2 text-sm">
                   <div className="flex items-center justify-between text-ink-600">
-                    <span>Tax</span>
-                    <span className="font-semibold text-ink-900">{formatMoney(totals.tax)}</span>
+                    <span className="inline-flex items-center gap-2"><Calendar size={15} /> Rental period</span>
+                    <span className="font-semibold text-ink-900">{startDate} to {endDate}</span>
                   </div>
-                )}
-                {totals.protectionFee > 0 && (
                   <div className="flex items-center justify-between text-ink-600">
-                    <span>Damage protection</span>
-                    <span className="font-semibold text-ink-900">{formatMoney(totals.protectionFee)}</span>
+                    <span>{DURATION_LABEL[duration]} ({totals.units} × {formatMoney(unitPrice ?? 0)})</span>
+                    <span className="font-semibold text-ink-900">{formatMoney(totals.subtotal)}</span>
                   </div>
-                )}
-                <div className="flex items-center justify-between pt-2 border-t border-ink-200 text-base">
-                  <span className="font-semibold text-ink-900">Total due today</span>
-                  <span className="font-display font-bold text-xl text-ink-900">{formatMoney(totals.total)}</span>
+                  {totals.tax > 0 && (
+                    <div className="flex items-center justify-between text-ink-600">
+                      <span>Tax</span>
+                      <span className="font-semibold text-ink-900">{formatMoney(totals.tax)}</span>
+                    </div>
+                  )}
+                  {totals.protectionFee > 0 && (
+                    <div className="flex items-center justify-between text-ink-600">
+                      <span>Damage protection</span>
+                      <span className="font-semibold text-ink-900">{formatMoney(totals.protectionFee)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between pt-2 border-t border-ink-200 text-base">
+                    <span className="font-semibold text-ink-900">Total due today</span>
+                    <span className="font-display font-bold text-xl text-ink-900">{formatMoney(totals.total)}</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {submitError && (
                 <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">
@@ -344,7 +433,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
 
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || !bookable || !totals}
                 className="w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold px-6 py-3.5 rounded-xl transition-colors"
               >
                 {submitting ? (
@@ -352,12 +441,14 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                     <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                     Confirming...
                   </>
-                ) : (
+                ) : bookable ? (
                   'Confirm booking'
+                ) : (
+                  `Currently ${statusLabel(robot.status).toLowerCase()}`
                 )}
               </button>
               <p className="text-xs text-ink-400 text-center">
-                Free cancellation up to 48 hours before your pickup. The service fee covers coordination, peer-to-peer handoff support and inspections.
+                Free cancellation up to 48 hours before your pickup. The platform's commission is paid by the owner from their payout — it never increases your price.
               </p>
             </form>
 
