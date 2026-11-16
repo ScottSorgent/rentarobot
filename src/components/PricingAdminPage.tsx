@@ -1,10 +1,10 @@
-import { AlertTriangle, BarChart3, Building2, History, Lock, Save, ShieldCheck, TrendingUp, UserPlus, UserMinus } from 'lucide-react';
+import { AlertTriangle, BarChart3, History, Lock, Save, ShieldCheck, TrendingUp, UserPlus, UserMinus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { Robot } from '@/lib/types';
 import { formatMoney } from '@/lib/types';
-import type { Hub, PricingSettings, RobotPricing, RobotQuote } from '@/lib/pricing';
-import { quoteRobot, round2, utilizationTable, UTILIZATION_LEVELS } from '@/lib/pricing';
-import { addAdminByEmail, applyCatalogRates, fetchAdminList, removeAdmin, saveRobotPricing, savePlatformSettings } from '@/lib/api';
+import type { Hub, PricingSettings, RobotPricing, UtilizationRow } from '@/lib/pricing';
+import { quoteListing, round2, utilizationTable, UTILIZATION_LEVELS } from '@/lib/pricing';
+import { applyCatalogRates, fetchAdminList, removeAdmin, addAdminByEmail, savePlatformSettings } from '@/lib/api';
 
 interface Props {
   robots: Robot[];
@@ -18,38 +18,12 @@ interface Props {
   onDataChanged: () => void;
 }
 
-type MoneyField = {
-  key: keyof RobotPricing;
-  label: string;
-  hint?: string;
-};
-
-const monthlyFields: MoneyField[] = [
-  { key: 'monthly_maintenance', label: 'Maintenance & consumables reserve ($/mo)' },
-  { key: 'monthly_hosting', label: 'Hosting allocation ($/mo)' },
-  { key: 'monthly_insurance', label: 'Insurance allocation ($/mo, optional)' },
-  { key: 'monthly_software', label: 'Software & connectivity ($/mo)' },
-  { key: 'monthly_storage', label: 'Hub storage ($/mo, optional fallback)' },
-  { key: 'handoff_incentive', label: 'Handoff incentive ($ per handoff)' },
-];
-
-const acquisitionFields: MoneyField[] = [
-  { key: 'wholesale_cost', label: 'Used robot purchase ($)' },
-  { key: 'battery_cost', label: 'New battery ($)' },
-  { key: 'refurbishment_cost', label: 'Other refurbishment ($)' },
-  { key: 'customer_acquisition_cost', label: 'Customer acquisition cost ($ one-time)' },
-];
-
-const bookingFields: MoneyField[] = [
-  { key: 'checkout_handling', label: 'Checkout handling ($ per rental)' },
-  { key: 'return_handling', label: 'Return handling ($ per rental, optional fallback)' },
-  { key: 'processing_fixed', label: 'Payment processing fixed fee ($)' },
-];
+type ListingDraft = Pick<RobotPricing, 'robot_id' | 'owner_monthly_price' | 'min_lease_months_override' | 'hub_id'>;
 
 export default function PricingAdminPage({ robots, pricingByRobot, settings, hubs, audit, isAdmin, currentUserId, onBack, onDataChanged }: Props) {
   const [utilizationLevel, setUtilizationLevel] = useState<0.6 | 0.7 | 0.8 | 0.9 | 1.0>(0.8);
   const [editingRobotId, setEditingRobotId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<RobotPricing | null>(null);
+  const [draft, setDraft] = useState<ListingDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<PricingSettings>(settings);
@@ -99,53 +73,54 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     }
   }
 
-  const quotes = useMemo(() => {
-    const map = new Map<string, RobotQuote>();
+  const listings = useMemo(() => {
+    const map = new Map<string, UtilizationRow>();
     for (const robot of robots) {
       const p = pricingByRobot.get(robot.id);
-      if (p) map.set(robot.id, quoteRobot(p, settingsDraft, utilizationLevel));
+      if (!p) continue;
+      const rows = utilizationTable(p, settingsDraft);
+      const idx = UTILIZATION_LEVELS.indexOf(utilizationLevel);
+      map.set(robot.id, rows[idx]);
     }
     return map;
   }, [robots, pricingByRobot, settingsDraft, utilizationLevel]);
 
-  const fleet = useMemo(() => {
-    let revenue = 0;
-    let fixedCost = 0;
-    let profit = 0;
-    let missing = 0;
+  const marketplace = useMemo(() => {
+    let renterTotal = 0;
+    let platform = 0;
+    let owners = 0;
     for (const robot of robots) {
-      const q = quotes.get(robot.id);
-      if (!q) continue;
-      revenue += q.monthlyRevenue;
-      fixedCost += q.breakdown.totalFixedMonthly;
-      profit += q.contributionProfit;
-      if (q.missingCosts.length > 0) missing += 1;
+      const row = listings.get(robot.id);
+      if (!row) continue;
+      renterTotal += row.renterTotal;
+      platform += row.platformEarnings;
+      owners += row.ownerEarnings;
     }
-    return { revenue: round2(revenue), fixedCost: round2(fixedCost), profit: round2(profit), margin: revenue > 0 ? round2(profit / revenue) : 0, missing };
-  }, [robots, quotes]);
+    return { renterTotal: round2(renterTotal), platform: round2(platform), owners: round2(owners) };
+  }, [robots, listings]);
 
   const hubStats = useMemo(() => {
-    const byHub = new Map<string, { name: string; robots: number; revenue: number; profit: number; capacity: number }>();
-    for (const hub of hubs) byHub.set(hub.id, { name: hub.name, robots: 0, revenue: 0, profit: 0, capacity: hub.robot_capacity });
+    const byHub = new Map<string, { name: string; robots: number; renterTotal: number; platform: number; capacity: number }>();
+    for (const hub of hubs) byHub.set(hub.id, { name: hub.name, robots: 0, renterTotal: 0, platform: 0, capacity: hub.robot_capacity });
     for (const robot of robots) {
       const p = pricingByRobot.get(robot.id);
-      const q = quotes.get(robot.id);
-      if (!p || !q) continue;
+      const row = listings.get(robot.id);
+      if (!p || !row) continue;
       const key = p.hub_id ?? 'unassigned';
-      if (!byHub.has(key)) byHub.set(key, { name: 'Unassigned', robots: 0, revenue: 0, profit: 0, capacity: 10 });
+      if (!byHub.has(key)) byHub.set(key, { name: 'Unassigned', robots: 0, renterTotal: 0, platform: 0, capacity: 10 });
       const entry = byHub.get(key)!;
       entry.robots += 1;
-      entry.revenue = round2(entry.revenue + q.monthlyRevenue);
-      entry.profit = round2(entry.profit + q.contributionProfit);
+      entry.renterTotal = round2(entry.renterTotal + row.renterTotal);
+      entry.platform = round2(entry.platform + row.platformEarnings);
     }
     return Array.from(byHub.entries());
-  }, [hubs, robots, pricingByRobot, quotes]);
+  }, [hubs, robots, pricingByRobot, listings]);
 
   function startEdit(robotId: string) {
     const p = pricingByRobot.get(robotId);
     if (!p) return;
     setEditingRobotId(robotId);
-    setDraft({ ...p });
+    setDraft({ robot_id: p.robot_id, owner_monthly_price: p.owner_monthly_price, min_lease_months_override: p.min_lease_months_override, hub_id: p.hub_id });
     setSaveError(null);
   }
 
@@ -154,34 +129,14 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     setSaving(true);
     setSaveError(null);
     try {
-      const summary = `Updated cost configuration for ${draft.model_name || draft.robot_id}: acquisition ${(draft.wholesale_cost + draft.battery_cost + draft.refurbishment_cost).toFixed(2)}, maintenance ${draft.monthly_maintenance}/mo, CAC ${draft.customer_acquisition_cost} over ${draft.expected_bookings_per_customer} bookings.`;
-      await saveRobotPricing(draft.robot_id, draft, summary);
+      const robot = robots.find((r) => r.id === draft.robot_id);
+      const summary = `Updated listing for ${robot?.name ?? draft.robot_id}: owner monthly price ${draft.owner_monthly_price}, minimum lease ${draft.min_lease_months_override ?? 'platform default'} months.`;
+      await applyCatalogRates(draft.robot_id, { monthly_rate: draft.owner_monthly_price }, summary);
       setEditingRobotId(null);
       setDraft(null);
       onDataChanged();
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Could not save the pricing changes.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function applyToCatalog(robotId: string) {
-    const q = quotes.get(robotId);
-    if (!q) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const robot = robots.find((r) => r.id === robotId);
-      const summary = `Applied recommended prices to ${robot?.name ?? robotId}: daily ${q.quotes.daily.price}, weekly ${q.quotes.weekly.price}, monthly ${q.quotes.monthly.price}.`;
-      await applyCatalogRates(robotId, {
-        daily_rate: q.quotes.daily.price,
-        weekly_rate: q.quotes.weekly.price,
-        monthly_rate: q.quotes.monthly.price,
-      }, summary);
-      onDataChanged();
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Could not update catalog rates.');
+      setSaveError(e instanceof Error ? e.message : 'Could not save the listing changes.');
     } finally {
       setSaving(false);
     }
@@ -191,18 +146,14 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     setSaving(true);
     setSaveError(null);
     try {
-      const summary = `Updated platform pricing defaults: target margin ${Math.round(settingsDraft.target_margin * 100)}%, CAC ${settingsDraft.customer_acquisition_cost} over ${settingsDraft.expected_bookings_per_customer} bookings, maintenance ${settingsDraft.maintenance_monthly}/mo.`;
+      const summary = `Updated marketplace terms: commission ${Math.round(settingsDraft.commission_pct * 100)}%, service fee ${settingsDraft.service_fee_flat}/lease, minimum term ${settingsDraft.min_lease_months} month(s).`;
       await savePlatformSettings(settingsDraft, summary);
       onDataChanged();
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Could not save the pricing defaults.');
+      setSaveError(e instanceof Error ? e.message : 'Could not save the marketplace terms.');
     } finally {
       setSaving(false);
     }
-  }
-
-  function updateDraft<K extends keyof RobotPricing>(key: K, value: RobotPricing[K]) {
-    setDraft((d) => (d ? { ...d, [key]: value } : d));
   }
 
   if (!isAdmin) {
@@ -211,7 +162,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
         <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-ink-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
             <h1 className="font-display text-lg font-bold tracking-tight flex items-center gap-2">
-              <BarChart3 size={20} className="text-brand-700" /> Pricing Management
+              <BarChart3 size={20} className="text-brand-700" /> Marketplace Management
             </h1>
             <button onClick={onBack} className="text-sm font-semibold text-ink-600 hover:text-ink-900 px-3 py-2 rounded-lg hover:bg-ink-50 transition-colors">
               Back to site
@@ -225,7 +176,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
             </span>
             <h2 className="mt-4 font-display text-xl font-bold text-ink-950">Administrators only</h2>
             <p className="mt-2 text-sm text-ink-500 leading-relaxed">
-              Cost and pricing settings can only be changed by designated administrator accounts. If you need access, ask an existing administrator to add your account.
+              Marketplace terms can only be changed by designated administrator accounts. If you need access, ask an existing administrator to add your account.
             </p>
           </div>
         </main>
@@ -238,7 +189,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
       <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-ink-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <h1 className="font-display text-lg font-bold tracking-tight flex items-center gap-2">
-            <BarChart3 size={20} className="text-brand-700" /> Pricing Management
+            <BarChart3 size={20} className="text-brand-700" /> Marketplace Management
           </h1>
           <button onClick={onBack} className="text-sm font-semibold text-ink-600 hover:text-ink-900 px-3 py-2 rounded-lg hover:bg-ink-50 transition-colors">
             Back to site
@@ -253,7 +204,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
 
         <section className="bg-white rounded-2xl border border-ink-100 p-5">
           <h2 className="font-display font-bold flex items-center gap-2"><ShieldCheck size={18} className="text-brand-700" /> Administrators</h2>
-          <p className="text-xs text-ink-500 mt-0.5">Only these accounts can change costs, pricing rules, or catalog prices. Changes here are enforced by the database.</p>
+          <p className="text-xs text-ink-500 mt-0.5">Only these accounts can change marketplace terms or catalog prices. Changes here are enforced by the database.</p>
           <ul className="mt-4 space-y-2">
             {adminRows.map((a) => (
               <li key={a.user_id} className="flex items-center justify-between gap-3 border border-ink-100 rounded-xl px-4 py-2.5 text-sm">
@@ -286,186 +237,124 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
           <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">{saveError}</div>
         )}
 
-        <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="Fleet monthly revenue" value={formatMoney(fleet.revenue)} icon={<TrendingUp size={18} />} />
-          <StatCard label="Fleet fixed costs / mo" value={formatMoney(fleet.fixedCost)} />
-          <StatCard label="Fleet contribution profit" value={formatMoney(fleet.profit)} sub={`${Math.round(fleet.margin * 100)}% margin`} />
-          <StatCard label="Robots with cost warnings" value={String(fleet.missing)} warn={fleet.missing > 0} />
+        <section className="grid sm:grid-cols-3 gap-4">
+          <StatCard label="Renter volume / mo (at utilization)" value={formatMoney(marketplace.renterTotal)} icon={<TrendingUp size={18} />} />
+          <StatCard label="Platform earnings / mo" value={formatMoney(marketplace.platform)} sub="Commission + service fee, net of processing" />
+          <StatCard label="Owner payouts / mo" value={formatMoney(marketplace.owners)} />
         </section>
 
         <section className="bg-white rounded-2xl border border-ink-100 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-display font-bold">Utilization scenarios</h2>
-              <p className="text-xs text-ink-500 mt-0.5">Fixed fleet costs are allocated across revenue-producing periods at each level. Rows flagged red miss the contribution-margin target at the current prices.</p>
+              <p className="text-xs text-ink-500 mt-0.5">Share of the year each robot is booked. Select a level to filter the per-listing figures below.</p>
             </div>
             <div className="flex gap-2">
-              {UTILIZATION_LEVELS.map((u) => (
+              {UTILIZATION_LEVELS.map((lvl) => (
                 <button
-                  key={u}
-                  onClick={() => setUtilizationLevel(u)}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                    utilizationLevel === u ? 'bg-ink-900 text-white border-ink-900' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-300'
+                  key={lvl}
+                  onClick={() => setUtilizationLevel(lvl)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                    utilizationLevel === lvl
+                      ? 'bg-ink-900 text-white border-ink-900'
+                      : 'bg-white text-ink-600 border-ink-200 hover:border-ink-300'
                   }`}
                 >
-                  {Math.round(u * 100)}%
+                  {Math.round(lvl * 100)}%
                 </button>
               ))}
             </div>
           </div>
-        </section>
 
-        <section className="space-y-4">
-          <h2 className="font-display text-xl font-bold">Per-robot pricing</h2>
-          {robots.map((robot) => {
-            const p = pricingByRobot.get(robot.id);
-            const q = quotes.get(robot.id);
-            if (!p || !q) return null;
-            const isEditing = editingRobotId === robot.id;
-            return (
-              <article key={robot.id} className="bg-white rounded-2xl border border-ink-100 shadow-sm overflow-hidden">
-                <div className="p-5 flex flex-col lg:flex-row lg:items-center gap-4">
-                  <img src={robot.image_url} alt={robot.name} className="w-full lg:w-24 h-32 lg:h-16 object-cover rounded-xl shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-display font-semibold text-lg">{robot.name}</h3>
-                    <p className="text-xs text-ink-500">
-                      {p.manufacturer} · {p.cost_category === 'window_cleaning' ? 'Window cleaning' : p.cost_category} · {p.financing_method === 'owned' ? `owned, acquired ${formatMoney(p.wholesale_cost + p.battery_cost + p.refurbishment_cost)}` : `${p.financing_method.replace('_', ' ')} ${formatMoney(p.monthly_payment)}/mo`}
-                      {' '}· fixed {formatMoney(q.breakdown.totalFixedMonthly)}/mo (depreciation {formatMoney(q.breakdown.capitalMonthly)}, CAC {formatMoney(q.breakdown.cacAllocation)}/mo)
-                    </p>
+          <div className="mt-4 space-y-4">
+            {robots.map((robot) => {
+              const p = pricingByRobot.get(robot.id);
+              const row = listings.get(robot.id);
+              if (!p || !row) return null;
+              const isEditing = editingRobotId === robot.id;
+              return (
+                <article key={robot.id} className="border border-ink-100 rounded-2xl overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                    <div>
+                      <p className="font-display font-semibold">{robot.name}</p>
+                      <p className="text-xs text-ink-500 mt-0.5">
+                        Listed at {formatMoney(p.owner_monthly_price)}/mo · min {p.min_lease_months_override ?? settingsDraft.min_lease_months} mo
+                        {p.min_lease_months_override == null ? ' (platform default)' : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-ink-500">Renter {formatMoney(row.renterTotal)}</span>
+                      <span className="font-semibold text-brand-700">Platform {formatMoney(row.platformEarnings)}</span>
+                      <span className="text-ink-500">Owner {formatMoney(row.ownerEarnings)}</span>
+                    </div>
+                  </div>
+
+                  {isEditing && draft && (
+                    <div className="border-t border-ink-100 bg-ink-50/60 p-5 space-y-4">
+                      <div className="grid sm:grid-cols-3 gap-3">
+                        <NumberField
+                          label="Owner's monthly price ($)"
+                          value={draft.owner_monthly_price}
+                          onChange={(v) => setDraft({ ...draft, owner_monthly_price: v })}
+                        />
+                        <SelectField
+                          label="Minimum lease"
+                          value={draft.min_lease_months_override == null ? '' : String(draft.min_lease_months_override)}
+                          options={[['', 'Platform default'], ['1', '1 month'], ['3', '3 months'], ['6', '6 months'], ['12', '12 months']]}
+                          onChange={(v) => setDraft({ ...draft, min_lease_months_override: v === '' ? null : Number(v) })}
+                        />
+                        <SelectField
+                          label="Distribution hub"
+                          value={draft.hub_id ?? ''}
+                          options={[['', 'Unassigned'], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
+                          onChange={(v) => setDraft({ ...draft, hub_id: v || null })}
+                        />
+                      </div>
+                      <button onClick={saveDraft} disabled={saving} className="inline-flex items-center gap-2 bg-ink-950 hover:bg-ink-800 text-white font-semibold px-5 py-2.5 rounded-xl disabled:opacity-60 transition-colors">
+                        <Save size={16} /> {saving ? 'Saving...' : 'Save listing'}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="border-t border-ink-100 px-5 py-3 flex items-center justify-between gap-3 bg-white">
                     <UtilizationTable p={p} settings={settingsDraft} />
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full bg-ink-100 px-2 py-0.5">Utilization {Math.round(q.utilization * 100)}% · {q.monthlyBookings.toFixed(1)} bookings/mo</span>
-                      <span className="rounded-full bg-ink-100 px-2 py-0.5">Revenue {formatMoney(q.monthlyRevenue)}/mo</span>
-                      <span className={`rounded-full px-2 py-0.5 ${q.contributionProfit >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        Profit {formatMoney(q.contributionProfit)} ({Math.round(q.contributionMargin * 100)}%)
-                      </span>
-                      <span className="rounded-full bg-ink-100 px-2 py-0.5">Break-even {isFinite(q.breakEvenBookings) ? `${q.breakEvenBookings} bookings (${Math.round(q.breakEvenUtilization * 100)}%)` : 'unreachable'}</span>
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <button onClick={() => (isEditing ? (setEditingRobotId(null), setDraft(null)) : startEdit(robot.id))} className="px-4 py-2 rounded-xl text-sm font-semibold border border-ink-200 hover:bg-ink-50 transition-colors">
+                        {isEditing ? 'Cancel' : 'Edit listing'}
+                      </button>
                     </div>
-                    {q.missingCosts.length > 0 && (
-                      <div className="mt-2 flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                        <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                        <span>{q.missingCosts.join(' · ')}</span>
-                      </div>
-                    )}
                   </div>
-                  <div className="flex lg:flex-col gap-2 shrink-0">
-                    <button onClick={() => (isEditing ? (setEditingRobotId(null), setDraft(null)) : startEdit(robot.id))} className="px-4 py-2 rounded-xl text-sm font-semibold border border-ink-200 hover:border-ink-400 transition-colors">
-                      {isEditing ? 'Close' : 'Edit costs'}
-                    </button>
-                    <button onClick={() => applyToCatalog(robot.id)} disabled={saving} className="px-4 py-2 rounded-xl text-sm font-semibold bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-60 transition-colors">
-                      Apply prices to catalog
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border-t border-ink-100 px-5 py-4 grid sm:grid-cols-3 gap-4 text-sm">
-                  {(['daily', 'weekly', 'monthly'] as const).map((d) => {
-                    const dq = q.quotes[d];
-                    return (
-                      <div key={d} className="bg-ink-50 rounded-xl p-3.5">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">{d} price</p>
-                        <p className="mt-1 font-display text-xl font-bold">{formatMoney(dq.price)}</p>
-                        <p className="text-xs text-ink-500 mt-0.5">≈ {formatMoney(dq.effectiveDaily)}/day effective</p>
-                        <p className="text-xs text-ink-400 mt-1">Zero-margin floor {formatMoney(dq.floorPrice)}{dq.overrideUsed ? ' · override used' : ''}{dq.belowFloor ? ' · below floor!' : ''}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {isEditing && draft && (
-                  <div className="border-t border-ink-100 bg-ink-50/60 p-5 space-y-5">
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      <TextField label="Manufacturer" value={draft.manufacturer} onChange={(v) => updateDraft('manufacturer', v)} />
-                      <TextField label="Model name" value={draft.model_name} onChange={(v) => updateDraft('model_name', v)} />
-                      <SelectField
-                        label="Category"
-                        value={draft.cost_category}
-                        options={[['residential', 'Residential'], ['prosumer', 'Prosumer'], ['commercial', 'Commercial'], ['window_cleaning', 'Window cleaning']]}
-                        onChange={(v) => updateDraft('cost_category', v as RobotPricing['cost_category'])}
-                      />
-                      <NumberField label="Used robot purchase ($)" value={draft.wholesale_cost} onChange={(v) => updateDraft('wholesale_cost', v)} />
-                      <NumberField label="New battery ($)" value={draft.battery_cost} onChange={(v) => updateDraft('battery_cost', v)} />
-                      <NumberField label="Other refurbishment ($)" value={draft.refurbishment_cost} onChange={(v) => updateDraft('refurbishment_cost', v)} />
-                      <NumberField label="Customer acquisition cost ($ one-time)" value={draft.customer_acquisition_cost} onChange={(v) => updateDraft('customer_acquisition_cost', v)} />
-                      <NumberField label="Expected bookings per customer" value={draft.expected_bookings_per_customer} onChange={(v) => updateDraft('expected_bookings_per_customer', v)} />
-                      <NumberField label="Handoff incentive ($ per handoff)" value={draft.handoff_incentive} onChange={(v) => updateDraft('handoff_incentive', v)} />
-                      <SelectField
-                        label="Financing method"
-                        value={draft.financing_method}
-                        options={[['owned', 'Owned'], ['financed', 'Financed'], ['supplier_leased', 'Supplier-leased']]}
-                        onChange={(v) => updateDraft('financing_method', v as RobotPricing['financing_method'])}
-                      />
-                      <NumberField label="Monthly lease/financing payment ($)" value={draft.monthly_payment} onChange={(v) => updateDraft('monthly_payment', v)} />
-                      <NumberField label="Financing term (months)" value={draft.term_months} onChange={(v) => updateDraft('term_months', v)} />
-                      <NumberField label="Interest rate (%)" value={draft.rate_pct} onChange={(v) => updateDraft('rate_pct', v)} />
-                      <NumberField label="Useful life (months)" value={draft.useful_life_months} onChange={(v) => updateDraft('useful_life_months', v)} />
-                      <NumberField label="Residual value ($)" value={draft.residual_value} onChange={(v) => updateDraft('residual_value', v)} />
-                      {monthlyFields.map((f) => (
-                        <NumberField key={f.key} label={f.label} value={Number(draft[f.key])} onChange={(v) => updateDraft(f.key, v as never)} />
-                      ))}
-                      {bookingFields.map((f) => (
-                        <NumberField key={f.key} label={f.label} value={Number(draft[f.key])} onChange={(v) => updateDraft(f.key, v as never)} />
-                      ))}
-                      <NumberField label="Processing rate (%)" value={draft.processing_pct} onChange={(v) => updateDraft('processing_pct', v)} step="0.001" />
-                      <NumberField label="Expected utilization (0-1)" value={draft.expected_utilization} onChange={(v) => updateDraft('expected_utilization', v)} step="0.05" />
-                      <NumberField label="Expected monthly bookings" value={draft.expected_monthly_bookings} onChange={(v) => updateDraft('expected_monthly_bookings', v)} />
-                      <NumberField label="Marketing rate (%)" value={draft.marketing_rate} onChange={(v) => updateDraft('marketing_rate', v)} step="0.01" />
-                      <NumberField label="Target contribution margin (%)" value={draft.target_margin} onChange={(v) => updateDraft('target_margin', v)} step="0.01" />
-                      <NumberField label="Tax rate (%)" value={draft.tax_rate} onChange={(v) => updateDraft('tax_rate', v)} step="0.01" />
-                      <NumberField label="Refundable deposit ($)" value={draft.deposit_amount} onChange={(v) => updateDraft('deposit_amount', v)} />
-                      <NumberField label="Daily price override ($)" value={draft.daily_override ?? ''} onChange={(v) => updateDraft('daily_override', v === '' ? null : v)} nullable />
-                      <NumberField label="Weekly price override ($)" value={draft.weekly_override ?? ''} onChange={(v) => updateDraft('weekly_override', v === '' ? null : v)} nullable />
-                      <NumberField label="Monthly price override ($)" value={draft.monthly_override ?? ''} onChange={(v) => updateDraft('monthly_override', v === '' ? null : v)} nullable />
-                      <SelectField
-                        label="Distribution hub"
-                        value={draft.hub_id ?? ''}
-                        options={[[ '', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
-                        onChange={(v) => updateDraft('hub_id', v || null)}
-                      />
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={draft.wholesale_verified} onChange={(e) => updateDraft('wholesale_verified', e.target.checked)} className="w-4 h-4 accent-brand-600" />
-                        Wholesale cost verified
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={draft.payment_verified} onChange={(e) => updateDraft('payment_verified', e.target.checked)} className="w-4 h-4 accent-brand-600" />
-                        Financing payment verified
-                      </label>
-                    </div>
-                    <button onClick={saveDraft} disabled={saving} className="inline-flex items-center gap-2 bg-ink-950 hover:bg-ink-800 text-white font-semibold px-5 py-2.5 rounded-xl disabled:opacity-60 transition-colors">
-                      <Save size={16} /> {saving ? 'Saving...' : 'Save cost configuration'}
-                    </button>
-                  </div>
-                )}
-              </article>
-            );
-          })}
+                </article>
+              );
+            })}
+          </div>
         </section>
 
         <section className="bg-white rounded-2xl border border-ink-100 p-5">
-          <h2 className="font-display font-bold">Platform defaults</h2>
-          <p className="text-xs text-ink-500 mt-0.5">Applied to robots without a robot-specific value. Editable until verified supplier quotes arrive.</p>
+          <h2 className="font-display font-bold">Marketplace terms</h2>
+          <p className="text-xs text-ink-500 mt-0.5">Applied to every booking. Owners set their own monthly prices; these terms set what Rent-A-Robot earns and the booking rules.</p>
           <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <NumberField label="Target contribution margin" value={settingsDraft.target_margin} onChange={(v) => setSettingsDraft((s) => ({ ...s, target_margin: v }))} step="0.01" />
-            <NumberField label="New battery default ($)" value={settingsDraft.battery_cost} onChange={(v) => setSettingsDraft((s) => ({ ...s, battery_cost: v }))} />
-            <NumberField label="Other refurbishment default ($)" value={settingsDraft.refurbishment_cost} onChange={(v) => setSettingsDraft((s) => ({ ...s, refurbishment_cost: v }))} />
-            <NumberField label="Useful life (months)" value={settingsDraft.useful_life_months} onChange={(v) => setSettingsDraft((s) => ({ ...s, useful_life_months: v }))} />
-            <NumberField label="Maintenance reserve ($/mo)" value={settingsDraft.maintenance_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, maintenance_monthly: v }))} />
-            <NumberField label="Hosting allocation ($/robot/mo)" value={settingsDraft.hosting_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, hosting_monthly: v }))} />
-            <NumberField label="Insurance ($/robot/mo, optional)" value={settingsDraft.insurance_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, insurance_monthly: v }))} />
-            <NumberField label="Customer acquisition cost ($ one-time)" value={settingsDraft.customer_acquisition_cost} onChange={(v) => setSettingsDraft((s) => ({ ...s, customer_acquisition_cost: v }))} />
-            <NumberField label="Expected bookings per customer" value={settingsDraft.expected_bookings_per_customer} onChange={(v) => setSettingsDraft((s) => ({ ...s, expected_bookings_per_customer: v }))} />
-            <NumberField label="Handoff incentive ($ per handoff)" value={settingsDraft.handoff_incentive} onChange={(v) => setSettingsDraft((s) => ({ ...s, handoff_incentive: v }))} />
-            <NumberField label="Processing rate" value={settingsDraft.processing_pct} onChange={(v) => setSettingsDraft((s) => ({ ...s, processing_pct: v }))} step="0.001" />
-            <NumberField label="Processing fixed fee ($)" value={settingsDraft.processing_fixed} onChange={(v) => setSettingsDraft((s) => ({ ...s, processing_fixed: v }))} step="0.01" />
-            <NumberField label="Hub storage ($/robot/mo, fallback)" value={settingsDraft.storage_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, storage_monthly: v }))} />
-            <NumberField label="Checkout handling ($, fallback)" value={settingsDraft.checkout_handling} onChange={(v) => setSettingsDraft((s) => ({ ...s, checkout_handling: v }))} />
-            <NumberField label="Return handling ($, fallback)" value={settingsDraft.return_handling} onChange={(v) => setSettingsDraft((s) => ({ ...s, return_handling: v }))} />
-            <NumberField label="Software ($/robot/mo)" value={settingsDraft.software_monthly} onChange={(v) => setSettingsDraft((s) => ({ ...s, software_monthly: v }))} />
+            <NumberField
+              label="Platform commission (% of list, 0-1)"
+              value={settingsDraft.commission_pct}
+              onChange={(v) => setSettingsDraft((s) => ({ ...s, commission_pct: v }))}
+              step="0.01"
+            />
+            <NumberField
+              label="Renter service fee ($ per month)"
+              value={settingsDraft.service_fee_flat}
+              onChange={(v) => setSettingsDraft((s) => ({ ...s, service_fee_flat: v }))}
+            />
+            <NumberField
+              label="Minimum lease (months)"
+              value={settingsDraft.min_lease_months}
+              onChange={(v) => setSettingsDraft((s) => ({ ...s, min_lease_months: Math.max(1, Math.round(v)) }))}
+              step="1"
+            />
+            <NumberField label="Payment processing (%)" value={settingsDraft.processing_pct} onChange={(v) => setSettingsDraft((s) => ({ ...s, processing_pct: v }))} step="0.001" />
+            <NumberField label="Payment processing fixed ($)" value={settingsDraft.processing_fixed} onChange={(v) => setSettingsDraft((s) => ({ ...s, processing_fixed: v }))} step="0.01" />
+            <NumberField label="Tax rate (0-1)" value={settingsDraft.tax_rate} onChange={(v) => setSettingsDraft((s) => ({ ...s, tax_rate: v }))} step="0.01" />
             <NumberField label="Base utilization (0-1)" value={settingsDraft.utilization_base} onChange={(v) => setSettingsDraft((s) => ({ ...s, utilization_base: v }))} step="0.05" />
-            <NumberField label="Weekly discount target" value={settingsDraft.weekly_discount} onChange={(v) => setSettingsDraft((s) => ({ ...s, weekly_discount: v }))} step="0.01" />
-            <NumberField label="Monthly discount target" value={settingsDraft.monthly_discount} onChange={(v) => setSettingsDraft((s) => ({ ...s, monthly_discount: v }))} step="0.01" />
-            <NumberField label="Tax rate" value={settingsDraft.tax_rate} onChange={(v) => setSettingsDraft((s) => ({ ...s, tax_rate: v }))} step="0.01" />
-            <NumberField label="Average booking length (days)" value={settingsDraft.avg_booking_days} onChange={(v) => setSettingsDraft((s) => ({ ...s, avg_booking_days: v }))} />
             <NumberField label="Late-handoff grace (minutes)" value={settingsDraft.late_grace_minutes} onChange={(v) => setSettingsDraft((s) => ({ ...s, late_grace_minutes: v }))} />
             <NumberField label="Late-handoff warning (minutes)" value={settingsDraft.late_warn_minutes} onChange={(v) => setSettingsDraft((s) => ({ ...s, late_warn_minutes: v }))} />
             <NumberField label="Late-handoff fee ($)" value={settingsDraft.late_fee_amount} onChange={(v) => setSettingsDraft((s) => ({ ...s, late_fee_amount: v }))} />
@@ -475,44 +364,29 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
             </label>
             <label className="flex items-center gap-2 text-sm self-end pb-2">
               <input type="checkbox" checked={settingsDraft.verified} onChange={(e) => setSettingsDraft((s) => ({ ...s, verified: e.target.checked }))} className="w-4 h-4 accent-brand-600" />
-              All default assumptions verified
+              All marketplace terms verified
             </label>
           </div>
           <button onClick={saveSettings} disabled={saving} className="mt-4 inline-flex items-center gap-2 bg-ink-950 hover:bg-ink-800 text-white font-semibold px-5 py-2.5 rounded-xl disabled:opacity-60 transition-colors">
-            <Save size={16} /> {saving ? 'Saving...' : 'Save platform defaults'}
+            <Save size={16} /> {saving ? 'Saving...' : 'Save marketplace terms'}
           </button>
         </section>
 
         <section className="bg-white rounded-2xl border border-ink-100 p-5">
-          <h2 className="font-display font-bold flex items-center gap-2"><Building2 size={18} /> Profitability per hub</h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-ink-500 border-b border-ink-100">
-                  <th className="py-2 pr-4">Hub</th>
-                  <th className="py-2 pr-4">Robots</th>
-                  <th className="py-2 pr-4">Capacity</th>
-                  <th className="py-2 pr-4">Revenue / mo</th>
-                  <th className="py-2">Contribution profit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hubStats.map(([id, s]) => (
-                  <tr key={id} className="border-b border-ink-50">
-                    <td className="py-2.5 pr-4 font-medium">{s.name}</td>
-                    <td className="py-2.5 pr-4">{s.robots}</td>
-                    <td className="py-2.5 pr-4">{s.capacity}</td>
-                    <td className="py-2.5 pr-4">{formatMoney(s.revenue)}</td>
-                    <td className={`py-2.5 font-semibold ${s.profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatMoney(s.profit)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <h2 className="font-display font-bold flex items-center gap-2"><AlertTriangle size={18} className="text-amber-500" /> Missing pricing data</h2>
+          <p className="text-xs text-ink-500 mt-0.5">Listings without an owner price row fall back to the legacy catalog monthly rate at checkout.</p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {robots.filter((r) => !pricingByRobot.has(r.id)).map((r) => (
+              <li key={r.id} className="border border-amber-200 bg-amber-50 rounded-xl px-4 py-2.5 text-amber-900">
+                {r.name} — no owner listing configuration yet.
+              </li>
+            ))}
+            {robots.every((r) => pricingByRobot.has(r.id)) && <li className="text-ink-500">All listings configured.</li>}
+          </ul>
         </section>
 
         <section className="bg-white rounded-2xl border border-ink-100 p-5">
-          <h2 className="font-display font-bold flex items-center gap-2"><History size={18} /> Pricing change history</h2>
+          <h2 className="font-display font-bold flex items-center gap-2"><History size={18} /> Change history</h2>
           {audit.length === 0 ? (
             <p className="text-sm text-ink-500 mt-3">No pricing changes recorded yet.</p>
           ) : (
@@ -535,27 +409,25 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
 function UtilizationTable({ p, settings }: { p: RobotPricing; settings: PricingSettings }) {
   const rows = utilizationTable(p, settings);
   return (
-    <div className="mt-3 overflow-x-auto">
+    <div className="flex-1 overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="text-left text-ink-400 border-b border-ink-100">
             <th className="py-1.5 pr-3 font-semibold">Utilization</th>
-            <th className="py-1.5 pr-3 font-semibold">Revenue/mo</th>
-            <th className="py-1.5 pr-3 font-semibold">Cost/mo</th>
-            <th className="py-1.5 pr-3 font-semibold">Contribution profit</th>
-            <th className="py-1.5 pr-3 font-semibold">Margin</th>
-            <th className="py-1.5 font-semibold">24-mo profit</th>
+            <th className="py-1.5 pr-3 font-semibold">Months booked</th>
+            <th className="py-1.5 pr-3 font-semibold">Renter pays</th>
+            <th className="py-1.5 pr-3 font-semibold">Platform earns</th>
+            <th className="py-1.5 font-semibold">Owner earns</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.utilization} className={`border-b border-ink-50 ${r.meetsTarget ? '' : 'text-red-700'}`}>
-              <td className="py-1.5 pr-3 font-medium">{Math.round(r.utilization * 100)}%</td>
-              <td className="py-1.5 pr-3">{formatMoney(r.monthlyRevenue)}</td>
-              <td className="py-1.5 pr-3">{formatMoney(r.monthlyCost)}</td>
-              <td className="py-1.5 pr-3">{formatMoney(r.contributionProfit)}</td>
-              <td className="py-1.5 pr-3">{Math.round(r.contributionMargin * 100)}%{r.meetsTarget ? '' : ' · below target'}</td>
-              <td className="py-1.5">{formatMoney(r.contributionProfit * 24)}</td>
+            <tr key={r.utilization} className={`border-b border-ink-50 ${Math.round(r.utilization * 100) === Math.round(settings.utilization_base * 100) ? 'font-semibold text-brand-800' : ''}`}>
+              <td className="py-1.5 pr-3">{Math.round(r.utilization * 100)}%</td>
+              <td className="py-1.5 pr-3">{r.monthsBooked}/yr</td>
+              <td className="py-1.5 pr-3">{formatMoney(r.renterTotal)}</td>
+              <td className="py-1.5 pr-3">{formatMoney(r.platformEarnings)}</td>
+              <td className="py-1.5">{formatMoney(r.ownerEarnings)}</td>
             </tr>
           ))}
         </tbody>
@@ -574,21 +446,7 @@ function StatCard({ label, value, sub, warn, icon }: { label: string; value: str
   );
 }
 
-function TextField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="block">
-      <span className="text-xs font-semibold text-ink-600 mb-1 block">{label}</span>
-      <input value={value} onChange={(e) => onChange(e.target.value)} className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
-    </label>
-  );
-}
-
-type NumberFieldProps =
-  | { label: string; value: number | ''; step?: string; nullable?: false; onChange: (v: number) => void }
-  | { label: string; value: number | ''; step?: string; nullable: true; onChange: (v: number | '') => void };
-
-function NumberField({ label, value, step, nullable, onChange }: NumberFieldProps) {
-  const emit = onChange as (v: number | '') => void;
+function NumberField({ label, value, onChange, step }: { label: string; value: number; onChange: (v: number) => void; step?: string }) {
   return (
     <label className="block">
       <span className="text-xs font-semibold text-ink-600 mb-1 block">{label}</span>
@@ -596,7 +454,7 @@ function NumberField({ label, value, step, nullable, onChange }: NumberFieldProp
         type="number"
         step={step ?? '0.01'}
         value={value}
-        onChange={(e) => emit(e.target.value === '' ? (nullable ? '' : 0) : Number(e.target.value))}
+        onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))}
         className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
       />
     </label>
