@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Robot } from '@/lib/types';
 import { formatMoney } from '@/lib/types';
 import type { Hub, PricingSettings, RobotPricing, UtilizationRow } from '@/lib/pricing';
-import { quoteListing, round2, utilizationTable, UTILIZATION_LEVELS } from '@/lib/pricing';
+import { round2, utilizationTable, UTILIZATION_LEVELS } from '@/lib/pricing';
 import { applyCatalogRates, fetchAdminList, removeAdmin, addAdminByEmail, savePlatformSettings } from '@/lib/api';
 
 interface Props {
@@ -78,7 +78,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     for (const robot of robots) {
       const p = pricingByRobot.get(robot.id);
       if (!p) continue;
-      const rows = utilizationTable(p, settingsDraft);
+      const rows = utilizationTable(p.owner_monthly_price, settingsDraft);
       const idx = UTILIZATION_LEVELS.indexOf(utilizationLevel);
       map.set(robot.id, rows[idx]);
     }
@@ -146,7 +146,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     setSaving(true);
     setSaveError(null);
     try {
-      const summary = `Updated marketplace terms: commission ${Math.round(settingsDraft.commission_pct * 100)}%, service fee ${settingsDraft.service_fee_flat}/lease, minimum term ${settingsDraft.min_lease_months} month(s).`;
+      const summary = `Updated marketplace terms: commission ${Math.round(settingsDraft.commission_pct * 100)}%, hosting ${settingsDraft.hosting_monthly}/monthly rental, minimum term ${settingsDraft.min_lease_months} month(s).`;
       await savePlatformSettings(settingsDraft, summary);
       onDataChanged();
     } catch (e) {
@@ -306,7 +306,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                         <SelectField
                           label="Distribution hub"
                           value={draft.hub_id ?? ''}
-                          options={[[ '', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
+                          options={[['', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
                           onChange={(v) => setDraft({ ...draft, hub_id: v || null })}
                         />
                       </div>
@@ -335,15 +335,21 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
           <p className="text-xs text-ink-500 mt-0.5">Applied to every booking. Owners set their own monthly prices; these terms set what Rent-A-Robot earns and the booking rules.</p>
           <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <NumberField
-              label="Platform commission (% of list, 0-1)"
+              label="Platform commission (share of rental, 0-1)"
               value={settingsDraft.commission_pct}
               onChange={(v) => setSettingsDraft((s) => ({ ...s, commission_pct: v }))}
               step="0.01"
             />
             <NumberField
-              label="Renter service fee ($ per month)"
-              value={settingsDraft.service_fee_flat}
-              onChange={(v) => setSettingsDraft((s) => ({ ...s, service_fee_flat: v }))}
+              label="Hosting allocation ($ per monthly rental)"
+              value={settingsDraft.hosting_monthly}
+              onChange={(v) => setSettingsDraft((s) => ({ ...s, hosting_monthly: v }))}
+            />
+            <NumberField
+              label="Marketing share of commission (0-1)"
+              value={settingsDraft.marketing_rate}
+              onChange={(v) => setSettingsDraft((s) => ({ ...s, marketing_rate: v }))}
+              step="0.01"
             />
             <NumberField
               label="Minimum lease (months)"
@@ -407,7 +413,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
 }
 
 function UtilizationTable({ p, settings }: { p: RobotPricing; settings: PricingSettings }) {
-  const rows = utilizationTable(p, settings);
+  const rows = utilizationTable(p.owner_monthly_price, settings);
   return (
     <div className="flex-1 overflow-x-auto">
       <table className="w-full text-xs">
