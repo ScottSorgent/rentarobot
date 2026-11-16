@@ -275,7 +275,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                     type="date"
                     value={endDate}
                     readOnly
-                    className="w-full border border-ink-200 rounded-xl px-3 py-2 text-sm bg-ink-50 text-ink-500"
+                    className="w-full border border-ink-200 rounded-xl px-3 py-2.5 text-sm bg-ink-50 text-ink-500"
                   />
                 </label>
               </div>
