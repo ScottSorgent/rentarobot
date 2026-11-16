@@ -306,7 +306,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                         <SelectField
                           label="Distribution hub"
                           value={draft.hub_id ?? ''}
-                          options={[['', 'Unassigned'], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
+                          options={[[ '', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
                           onChange={(v) => setDraft({ ...draft, hub_id: v || null })}
                         />
                       </div>
