@@ -1,9 +1,9 @@
 import { ArrowLeft, Building2, Calendar, Check, Home, MapPin, ShieldCheck, Star, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { NewBooking, Robot, RobotCategory } from '@/lib/types';
-import { daysBetween, formatMoney, PRICING_VERSION } from '@/lib/types';
-import type { DurationType, PricingSettings, RobotPricing } from '@/lib/pricing';
-import { durationForDays, quoteBookingTotal, quoteRobot } from '@/lib/pricing';
+import { daysBetween, monthsBetween, formatMoney, PRICING_VERSION } from '@/lib/types';
+import type { PricingSettings, RobotPricing } from '@/lib/pricing';
+import { quoteRenterMonthly } from '@/lib/pricing';
 
 interface Props {
   robot: Robot;
@@ -20,28 +20,18 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function datePlusDays(date: string, days: number): string {
+function datePlusMonths(date: string, months: number): string {
   const next = new Date(`${date}T00:00:00`);
-  next.setDate(next.getDate() + days);
+  next.setMonth(next.getMonth() + months);
+  next.setDate(next.getDate() - 1);
   return next.toISOString().slice(0, 10);
 }
 
-const durationLabels: Record<DurationType, { title: string; blurb: string }> = {
-  daily: { title: 'Daily rental', blurb: '1–6 days. Highest flexibility for short jobs.' },
-  weekly: { title: 'Weekly rental', blurb: '7–27 days. Save on week-long client runs.' },
-  monthly: { title: 'Monthly rental', blurb: '28 days or longer. Best value for steady work.' },
-};
-
 export default function RobotDetailPage({ robot, pricing, settings, submitting, submitError, onBack, onSubmit, onViewBookings }: Props) {
   const [startDate, setStartDate] = useState(todayStr());
-  const [endDate, setEndDate] = useState((() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 2);
-    return d.toISOString().slice(0, 10);
-  })());
+  const [months, setMonths] = useState(Math.max(1, settings.min_lease_months));
   const [usageType, setUsageType] = useState<RobotCategory>(robot.category);
   const [damageProtection, setDamageProtection] = useState(false);
-  const [minimumTermMonths, setMinimumTermMonths] = useState(1);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -52,50 +42,36 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
     window.scrollTo({ top: 0 });
   }, []);
 
+  const endDate = useMemo(() => datePlusMonths(startDate, months), [startDate, months]);
   const days = useMemo(() => daysBetween(startDate, endDate), [startDate, endDate]);
-  const duration = useMemo(() => durationForDays(days), [days]);
 
-  // Fallback when pricing configuration has not been loaded: use catalog rates.
-  const quote = useMemo(() => {
-    if (pricing) return quoteRobot(pricing, settings);
-    return null;
-  }, [pricing, settings]);
+  const listPrice = pricing ? pricing.owner_monthly_price : Number(robot.monthly_rate);
+  const minMonths = pricing?.min_lease_months_override ?? settings.min_lease_months;
 
   const totals = useMemo(() => {
-    if (quote) {
-      const t = quoteBookingTotal(quote, duration, days);
-      const protectionFee = damageProtection ? Math.round(t.base * 0.09 * 100) / 100 : 0;
-      const total = Math.round((t.base + t.tax + protectionFee) * 100) / 100;
-      return { ...t, deliveryFee: 0, protectionFee, total, unitPrice: quote.quotes[duration].price, floorPrice: quote.quotes[duration].floorPrice };
-    }
-    // Legacy catalog-rate fallback so booking never breaks without pricing rows.
-    const unitPrice = duration === 'daily' ? Number(robot.daily_rate) : duration === 'weekly' ? Number(robot.weekly_rate) : Number(robot.monthly_rate);
-    const units = duration === 'daily' ? days : duration === 'weekly' ? Math.ceil(days / 7) : Math.ceil(days / 30);
-    const base = Math.round(unitPrice * units * 100) / 100;
-    return { duration, units, base, tax: 0, deposit: 0, total: base, effectiveDaily: days > 0 ? Math.round((base / days) * 100) / 100 : base, deliveryFee: 0, protectionFee: damageProtection ? Math.round(base * 0.09 * 100) / 100 : 0, unitPrice, floorPrice: 0 };
-  }, [quote, duration, days, robot, damageProtection]);
+    const q = quoteRenterMonthly(listPrice, settings, months);
+    const protectionFee = damageProtection ? Math.round(q.listPrice * 0.09 * 100) / 100 : 0;
+    return { ...q, protectionFee, total: Math.round((q.total + protectionFee) * 100) / 100 };
+  }, [listPrice, settings, months, damageProtection]);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const datesValid = new Date(endDate) >= new Date(startDate);
-  const formValid = name.trim().length > 1 && emailValid && datesValid;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
-    if (!formValid || submitting) return;
+    if (!name.trim() || name.trim().length <= 1 || !emailValid || submitting) return;
     const snapshot = {
-      duration_type: duration,
-      unit_price: totals.unitPrice,
-      units: totals.units,
-      base_price: totals.base,
+      duration_type: 'monthly' as const,
+      unit_price: listPrice,
+      units: months,
+      base_price: totals.listPrice,
       tax_amount: totals.tax,
-      deposit_amount: quote ? quote.deposit : 0,
-      delivery_fee: totals.deliveryFee,
+      deposit_amount: 0,
+      delivery_fee: 0,
       damage_protection_fee: totals.protectionFee,
       total_price: totals.total,
-      effective_daily_rate: totals.effectiveDaily,
-      floor_price: totals.floorPrice,
-      minimum_term_months: duration === 'monthly' ? minimumTermMonths : null,
+      service_fee: totals.serviceFee,
+      minimum_term_months: minMonths,
       pricing_version: PRICING_VERSION,
       recorded_at: new Date().toISOString(),
     };
@@ -105,23 +81,23 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
       renter_email: email.trim(),
       renter_phone: phone.trim() || undefined,
       usage_type: usageType,
-      plan_type: duration === 'monthly' ? 'lease' : 'rental',
+      plan_type: 'lease',
       start_date: startDate,
       end_date: endDate,
       days,
       total_price: totals.total,
       notes: notes.trim() || undefined,
       pricing_snapshot: snapshot,
-      duration_type: duration,
-      minimum_term_months: duration === 'monthly' ? minimumTermMonths : null,
-      deposit_amount: quote ? quote.deposit : 0,
-      delivery_fee: totals.deliveryFee,
+      duration_type: 'monthly',
+      minimum_term_months: minMonths,
+      deposit_amount: 0,
+      delivery_fee: 0,
       damage_protection_fee: totals.protectionFee,
       tax_amount: totals.tax,
     });
   }
 
-  const durationOrder: DurationType[] = ['daily', 'weekly', 'monthly'];
+  const monthOptions = [1, 3, 6, 12].filter((m) => m >= minMonths);
 
   return (
     <div className="min-h-screen">
@@ -194,70 +170,36 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
           <div className="lg:sticky lg:top-24 self-start w-full">
             <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-ink-100 shadow-sm p-6 space-y-5">
               <div>
-                <span className="text-xs font-semibold text-ink-600 mb-2 block">Choose your rental duration</span>
-                <div className="space-y-2.5">
-                  {durationOrder.map((d) => {
-                    const price = quote ? quote.quotes[d].price : d === 'daily' ? Number(robot.daily_rate) : d === 'weekly' ? Number(robot.weekly_rate) : Number(robot.monthly_rate);
-                    const effDaily = price / (d === 'daily' ? 1 : d === 'weekly' ? 7 : 30);
-                    const selected = duration === d;
-                    const isMonthly = d === 'monthly';
-                    return (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => {
-                          const minDays = d === 'daily' ? 1 : d === 'weekly' ? 7 : 28;
-                          const minEnd = datePlusDays(startDate, minDays - 1);
-                          if (new Date(endDate) < new Date(minEnd)) setEndDate(minEnd);
-                          if (d === 'monthly') setMinimumTermMonths((m) => (m === 1 ? 1 : m));
-                        }}
-                        className={`w-full text-left rounded-xl border p-4 transition-all relative ${
-                          selected
-                            ? isMonthly
-                              ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-200'
-                              : 'border-ink-900 bg-ink-50 ring-1 ring-ink-900'
-                            : 'border-ink-200 bg-white hover:border-ink-300'
-                        }`}
-                      >
-                        {isMonthly && (
-                          <span className="absolute -top-2.5 right-3 bg-brand-600 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full">
-                            Best for Professional Cleaners
-                          </span>
-                        )}
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-bold text-ink-900">{durationLabels[d].title}</p>
-                            <p className="text-xs text-ink-500 mt-0.5">{durationLabels[d].blurb}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="font-display text-xl font-bold text-ink-900">
-                              {formatMoney(price)}
-                              <span className="text-xs font-medium text-ink-500">/{d === 'daily' ? 'day' : d === 'weekly' ? 'week' : 'month'}</span>
-                            </p>
-                            <p className="text-[11px] text-ink-500">≈ {formatMoney(Math.round(effDaily * 100) / 100)}/day effective</p>
-                          </div>
-                        </div>
-                        {isMonthly && (
-                          <div className="mt-3 pt-3 border-t border-brand-200/60 flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-semibold text-ink-700">Minimum term:</span>
-                            {[1, 3, 6, 12].map((m) => (
-                              <span
-                                key={m}
-                                className={`text-xs rounded-full px-2 py-0.5 font-medium border ${
-                                  minimumTermMonths === m
-                                    ? 'bg-brand-600 text-white border-brand-600'
-                                    : 'bg-white text-ink-600 border-ink-200'
-                                }`}
-                              >
-                                {m} mo{m > 1 ? 's' : ''}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+                <p className="font-display text-2xl font-bold text-ink-900">
+                  {formatMoney(listPrice)}
+                  <span className="text-sm font-medium text-ink-500">/month, listed by the owner</span>
+                </p>
+                <p className="text-xs text-ink-500 mt-1">
+                  Peer-to-peer exchange: you rent directly from the robot's owner, coordinated through Rent-A-Robot.
+                </p>
+              </div>
+
+              <div>
+                <span className="text-xs font-semibold text-ink-600 mb-2 block">Lease length</span>
+                <div className="grid grid-cols-4 gap-2">
+                  {monthOptions.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMonths(m)}
+                      className={`rounded-xl border px-2 py-2.5 text-sm font-semibold transition-all ${
+                        months === m
+                          ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-200 text-brand-800'
+                          : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300'
+                      }`}
+                    >
+                      {m} mo{m > 1 ? 's' : ''}
+                    </button>
+                  ))}
                 </div>
+                {minMonths > 1 && (
+                  <p className="text-xs text-ink-500 mt-1.5">This owner requires a {minMonths}-month minimum.</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -276,15 +218,11 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                   <input
                     type="date"
                     value={endDate}
-                    min={startDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full border border-ink-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                    readOnly
+                    className="w-full border border-ink-200 rounded-xl px-3 py-2.5 text-sm bg-ink-50 text-ink-500"
                   />
                 </label>
               </div>
-              {touched && !datesValid && (
-                <p className="text-xs text-red-600 -mt-2">End date must be on or after the start date.</p>
-              )}
 
               <div>
                 <span className="text-xs font-semibold text-ink-600 mb-1.5 block">Where will you use it?</span>
@@ -311,7 +249,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                 <label className="flex items-center justify-between gap-3 rounded-xl border border-ink-200 px-4 py-3 cursor-pointer hover:border-ink-300 transition-colors">
                   <span>
                     <span className="text-sm font-semibold text-ink-900 block">Damage protection</span>
-                    <span className="text-xs text-ink-500">Covers accidental damage, 9% of the base price.</span>
+                    <span className="text-xs text-ink-500">Covers accidental damage, 9% of the monthly price.</span>
                   </span>
                   <span className="flex items-center gap-2">
                     <input type="checkbox" checked={damageProtection} onChange={(e) => setDamageProtection(e.target.checked)} className="w-4 h-4 accent-brand-600" />
@@ -369,12 +307,16 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
 
               <div className="rounded-xl bg-ink-50 border border-ink-100 p-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between text-ink-600">
-                  <span className="inline-flex items-center gap-2"><Calendar size={15} /> Service period</span>
-                  <span className="font-semibold text-ink-900">{days} day{days > 1 ? 's' : ''} · {durationLabels[duration].title}</span>
+                  <span className="inline-flex items-center gap-2"><Calendar size={15} /> Lease period</span>
+                  <span className="font-semibold text-ink-900">{months} month{months > 1 ? 's' : ''} · {startDate} to {endDate}</span>
                 </div>
                 <div className="flex items-center justify-between text-ink-600">
-                  <span>{durationLabels[duration].title} ({totals.units} × {formatMoney(totals.unitPrice)})</span>
-                  <span className="font-semibold text-ink-900">{formatMoney(totals.base)}</span>
+                  <span>Owner's monthly price ({months} × {formatMoney(listPrice)})</span>
+                  <span className="font-semibold text-ink-900">{formatMoney(totals.listPrice)}</span>
+                </div>
+                <div className="flex items-center justify-between text-ink-600">
+                  <span>Service fee</span>
+                  <span className="font-semibold text-ink-900">{formatMoney(totals.serviceFee)}</span>
                 </div>
                 {totals.tax > 0 && (
                   <div className="flex items-center justify-between text-ink-600">
@@ -386,12 +328,6 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                   <div className="flex items-center justify-between text-ink-600">
                     <span>Damage protection</span>
                     <span className="font-semibold text-ink-900">{formatMoney(totals.protectionFee)}</span>
-                  </div>
-                )}
-                {quote && quote.deposit > 0 && (
-                  <div className="flex items-center justify-between text-ink-600">
-                    <span>Refundable deposit <span className="text-xs">(returned after inspection)</span></span>
-                    <span className="font-semibold text-ink-900">{formatMoney(quote.deposit)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-2 border-t border-ink-200 text-base">
@@ -421,7 +357,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
                 )}
               </button>
               <p className="text-xs text-ink-400 text-center">
-                Free cancellation up to 48 hours before your pickup. Prices include pickup and return conditions — no hidden fees at checkout.
+                Free cancellation up to 48 hours before your pickup. The service fee covers coordination, peer-to-peer handoff support and inspections.
               </p>
             </form>
 

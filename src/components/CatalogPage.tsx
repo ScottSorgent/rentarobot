@@ -63,10 +63,10 @@ function RobotCard({ robot, onOpen, delay }: { robot: Robot; onOpen: (r: Robot) 
         </h3>
         <p className="mt-1 text-sm text-ink-500 line-clamp-2 leading-relaxed">{robot.tagline}</p>
         <div className="mt-4 flex items-baseline gap-1.5">
-          <span className="text-2xl font-display font-bold text-ink-900">{formatMoney(robot.daily_rate)}</span>
-          <span className="text-sm text-ink-500">/day</span>
+          <span className="text-2xl font-display font-bold text-ink-900">{formatMoney(robot.monthly_rate)}</span>
+          <span className="text-sm text-ink-500">/month</span>
           <span className="ml-auto text-xs font-medium text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-2 py-0.5">
-            {formatMoney(robot.monthly_rate)}/month lease
+            Peer-to-peer lease
           </span>
         </div>
       </div>
