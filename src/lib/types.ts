@@ -1,4 +1,4 @@
-export type DurationType = 'monthly';
+export type DurationType = 'daily' | 'weekly' | 'monthly';
 
 export type RobotCategory = 'commercial' | 'residential';
 export type RobotStatus = 'available' | 'rented' | 'maintenance';
@@ -16,6 +16,8 @@ export interface Robot {
   description: string;
   image_url: string;
   monthly_rate: number;
+  daily_rate: number | null;
+  weekly_rate: number | null;
   rating: number;
   reviews_count: number;
   location: string;
@@ -99,7 +101,7 @@ export interface Booking {
   status: BookingStatus;
   created_at: string;
   pricing_snapshot: PricingSnapshot | null;
-  duration_type: 'monthly' | null;
+  duration_type: DurationType | null;
   minimum_term_months: number | null;
   deposit_amount: number;
   delivery_fee: number;
@@ -175,12 +177,33 @@ export function monthsBetween(start: string, end: string): number {
   return Math.max(1, months);
 }
 
+// Whole weeks in an inclusive date span, floored at 1.
+export function weeksBetween(start: string, end: string): number {
+  return Math.max(1, Math.ceil(daysBetween(start, end) / 7));
+}
+
 export function quoteTotal(robot: Robot, months: number): number {
   return Math.ceil(Math.max(1, months)) * Number(robot.monthly_rate);
 }
 
-export const PRICING_VERSION = '2026-11-p2p-monthly-v3';
+export const PRICING_VERSION = '2026-11-marketplace-20pct-v4';
 
 export function formatMoney(value: number): string {
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// True when the robot supports daily/weekly/monthly rentals (humanoid
+// household robots); false when it only lists monthly (specialized cleaning
+// robots).
+export function isHumanoid(robot: Robot): boolean {
+  return Boolean(robot.daily_rate || robot.weekly_rate);
+}
+
+export function statusLabel(status: RobotStatus): string {
+  switch (status) {
+    case 'available': return 'Available';
+    case 'rented': return 'Reserved';
+    case 'maintenance': return 'Unavailable';
+    default: return 'Available';
+  }
 }
