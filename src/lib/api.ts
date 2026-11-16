@@ -8,7 +8,7 @@ export async function fetchRobots(): Promise<Robot[]> {
     .from('robots')
     .select('*')
     .order('category', { ascending: true })
-    .order('daily_rate', { ascending: false });
+    .order('monthly_rate', { ascending: false });
 
   if (error) throw new Error(error.message);
   return (data ?? []) as Robot[];
@@ -135,13 +135,11 @@ export async function fetchPricingAudit(limit = 50) {
 
 export async function applyCatalogRates(
   robotId: string,
-  rates: { daily_rate: number; weekly_rate: number; monthly_rate: number },
+  rates: { monthly_rate: number },
   summary: string,
 ): Promise<void> {
   const { error } = await supabase.rpc('admin_apply_catalog_rates', {
     p_robot_id: robotId,
-    p_daily: rates.daily_rate,
-    p_weekly: rates.weekly_rate,
     p_monthly: rates.monthly_rate,
     p_summary: summary,
   });

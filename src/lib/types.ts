@@ -1,4 +1,4 @@
-import type { DurationType } from './pricing';
+export type DurationType = 'monthly';
 
 export type RobotCategory = 'commercial' | 'residential';
 export type RobotStatus = 'available' | 'rented' | 'maintenance';
@@ -15,8 +15,6 @@ export interface Robot {
   tagline: string;
   description: string;
   image_url: string;
-  daily_rate: number;
-  weekly_rate: number;
   monthly_rate: number;
   rating: number;
   reviews_count: number;
@@ -101,7 +99,7 @@ export interface Booking {
   status: BookingStatus;
   created_at: string;
   pricing_snapshot: PricingSnapshot | null;
-  duration_type: 'daily' | 'weekly' | 'monthly' | null;
+  duration_type: 'monthly' | null;
   minimum_term_months: number | null;
   deposit_amount: number;
   delivery_fee: number;
@@ -132,8 +130,7 @@ export interface PricingSnapshot {
   delivery_fee: number;
   damage_protection_fee: number;
   total_price: number;
-  effective_daily_rate: number;
-  floor_price: number;
+  service_fee: number;
   minimum_term_months: number | null;
   pricing_version: string;
   recorded_at: string;
@@ -157,8 +154,6 @@ export interface NewBooking {
   deposit_amount?: number;
   delivery_fee?: number;
   damage_protection_fee?: number;
-  checkout_handling_cost?: number;
-  return_handling_cost?: number;
   tax_amount?: number;
   hub_id?: string | null;
 }
@@ -168,16 +163,23 @@ export function daysBetween(start: string, end: string): number {
   return Math.max(1, Math.round(ms / 86400000) + 1);
 }
 
-export function quoteTotal(robot: Robot, days: number, planType: PlanType = 'rental'): number {
-  if (planType === 'lease') {
-    return Math.ceil(days / 30) * Number(robot.monthly_rate);
-  }
-  const weeks = Math.floor(days / 7);
-  const remainder = days % 7;
-  return Math.round((weeks * Number(robot.weekly_rate) + remainder * Number(robot.daily_rate)) * 100) / 100;
+// Calendar-month lease length: a start-to-end span produced by datePlusMonths
+// must bill as exactly that many months, even though the inclusive day count
+// exceeds 30 per month.
+export function monthsBetween(start: string, end: string): number {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  if (!sy || !sm || !sd || !ey || !em || !ed) return 1;
+  let months = (ey - sy) * 12 + (em - sm);
+  if (ed > sd) months += 1;
+  return Math.max(1, months);
 }
 
-export const PRICING_VERSION = '2026-11-refurb-p2p-v2';
+export function quoteTotal(robot: Robot, months: number): number {
+  return Math.ceil(Math.max(1, months)) * Number(robot.monthly_rate);
+}
+
+export const PRICING_VERSION = '2026-11-p2p-monthly-v3';
 
 export function formatMoney(value: number): string {
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
