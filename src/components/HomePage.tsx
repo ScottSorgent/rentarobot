@@ -10,9 +10,10 @@ interface Props {
   onOpenRobot: (robot: Robot) => void;
   onOpenBookings: () => void;
   onSignOut: () => void;
+  onList: () => void;
 }
 
-export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpenRobot, onOpenBookings, onSignOut }: Props) {
+export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpenRobot, onOpenBookings, onSignOut, onList }: Props) {
   const activeBookings = bookings.filter((b) => b.status === 'confirmed' || b.status === 'pending').length;
   const featured = robots.filter((r) => r.status === 'available').slice(0, 3);
 
@@ -23,6 +24,7 @@ export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpen
         active="home"
         onHome={() => window.scrollTo({ top: 0 })}
         onBrowse={onBrowse}
+        onList={onList}
         onBookings={onOpenBookings}
         onSignOut={onSignOut}
       />
