@@ -1,7 +1,7 @@
-import { ArrowRight, BarChart3, Bot, CalendarCheck, Check, LogOut, Mail, MapPin, Pencil, Phone, Sparkles, Trash2, UserRound, X } from 'lucide-react';
+import { ArrowRight, BarChart3, Bot, PlusCircle, Wrench, CalendarCheck, Check, LogOut, Mail, MapPin, Pencil, Phone, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 import { useState } from 'react';
-import type { OnboardingInput, ProviderProfile } from '@/lib/types';
-import { completeProviderOnboarding } from '@/lib/api';
+import type { CityInfo, OnboardingInput, ProviderProfile } from '@/lib/types';
+import { completeProviderOnboarding, lookupZip, savePreferredCity } from '@/lib/api';
 
 interface Props {
   userEmail: string;
@@ -13,6 +13,8 @@ interface Props {
   onProfileSaved: (profile: ProviderProfile) => void;
   isAdmin: boolean;
   onOpenPricingAdmin: () => void;
+  onOpenOwnerDashboard: () => void;
+  onOpenListRobot: () => void;
 }
 
 const providerTypeLabels: Record<string, string> = {
@@ -22,6 +24,7 @@ const providerTypeLabels: Record<string, string> = {
   company_employee: 'Company Employee',
   homeowner: 'Homeowner',
   renter: 'Renter',
+  robot_owner: 'Robot Owner',
 };
 
 const experienceLabels: Record<string, string> = {
@@ -43,6 +46,8 @@ export default function ProfilePage({
   onProfileSaved,
   isAdmin,
   onOpenPricingAdmin,
+  onOpenOwnerDashboard,
+  onOpenListRobot,
 }: Props) {
   const displayName = profile?.display_name || userEmail.split('@')[0];
   const [editing, setEditing] = useState(false);
@@ -52,6 +57,7 @@ export default function ProfilePage({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [zipMatches, setZipMatches] = useState<CityInfo[] | null>(null);
 
   function startEdit() {
     if (!profile) return;
@@ -74,6 +80,7 @@ export default function ProfilePage({
       other_specialties: profile.other_specialties ?? undefined,
       home_zip: profile.home_zip,
       service_area_zips: profile.service_area_zips,
+      preferred_city_id: profile.preferred_city_id ?? undefined,
       rates_include_platform_fee: profile.rates_include_platform_fee,
       owned_equipment: profile.owned_equipment,
       equipment_models: profile.equipment_models ?? undefined,
@@ -86,6 +93,21 @@ export default function ProfilePage({
 
   function updateDraft<K extends keyof OnboardingInput>(key: K, value: OnboardingInput[K]) {
     setDraft((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  async function checkZip(zip: string) {
+    const cleaned = zip.trim();
+    if (cleaned.length < 5) {
+      setZipMatches(null);
+      return;
+    }
+    try {
+      const matches = await lookupZip(cleaned);
+      setZipMatches(matches);
+      if (matches.length > 0) updateDraft('preferred_city_id', matches[0].city_id);
+    } catch {
+      setZipMatches(null);
+    }
   }
 
   async function saveEdit() {
@@ -101,6 +123,9 @@ export default function ProfilePage({
         home_zip: draft.home_zip.trim(),
         service_area_zips: draft.service_area_zips.map((area) => area.trim()).filter(Boolean),
       });
+      if (draft.preferred_city_id) {
+        await savePreferredCity(draft.preferred_city_id, draft.home_zip.trim());
+      }
       setEditing(false);
       onProfileSaved(profile!);
     } catch {
@@ -201,7 +226,29 @@ export default function ProfilePage({
                   onChange={(v) => updateDraft('preferred_language', v)}
                   options={languageOptions.map((l) => [l, l])}
                 />
-                <EditField label="Home or business ZIP code" value={draft.home_zip} onChange={(v) => updateDraft('home_zip', v)} />
+                <label className="block">
+                  <span className="text-xs font-semibold text-ink-700">Home or business ZIP code</span>
+                  <input
+                    type="text"
+                    value={draft.home_zip}
+                    onChange={(event) => {
+                      updateDraft('home_zip', event.target.value);
+                      void checkZip(event.target.value);
+                    }}
+                    className="mt-1.5 w-full border border-ink-200 rounded-xl px-3.5 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  />
+                </label>
+                {zipMatches && zipMatches.length > 1 && (
+                  <EditDropdown
+                    label="Your city"
+                    value={draft.preferred_city_id ?? ''}
+                    onChange={(v) => updateDraft('preferred_city_id', v)}
+                    options={zipMatches.map((c) => [c.city_id, `${c.city_name}, ${c.state_code}`])}
+                  />
+                )}
+                {zipMatches && zipMatches.length === 0 && (
+                  <p className="text-xs text-red-700">We don't serve that ZIP yet. Enter a ZIP in a supported city.</p>
+                )}
                 <EditField
                   label="Service areas (comma separated)"
                   value={draft.service_area_zips.join(', ')}
@@ -249,6 +296,13 @@ export default function ProfilePage({
                   icon={<MapPin size={15} />}
                 />
                 <Detail
+                  label="Your city"
+                  value={profile.preferred_city_id
+                    ? profile.preferred_city_id.replace(/-([a-z]{2})$/, (_, s) => `, ${s.toUpperCase()}`)
+                    : 'Not set yet'}
+                  icon={<MapPin size={15} />}
+                />
+                <Detail
                   label="Equipment experience"
                   value={experienceLabels[profile.automation_experience ?? ''] ?? profile.automation_experience ?? 'Not set yet'}
                   icon={<Bot size={15} />}
@@ -264,6 +318,25 @@ export default function ProfilePage({
             </p>
           </section>
         )}
+
+        <section className="mt-6 bg-white rounded-3xl border border-ink-100 shadow-sm p-6 sm:p-8">
+          <h2 className="font-display text-lg font-bold tracking-tight text-ink-950 text-center">Robot Owner Tools</h2>
+          <button
+            onClick={onOpenOwnerDashboard}
+            className="mt-4 w-full inline-flex items-center justify-center gap-2 border border-ink-200 text-ink-800 hover:bg-ink-50 font-semibold px-5 py-3 rounded-xl transition-colors"
+          >
+            <Wrench size={17} /> My Robot Listings
+          </button>
+          <button
+            onClick={onOpenListRobot}
+            className="mt-3 w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 text-white font-semibold px-5 py-3 rounded-xl transition-colors"
+          >
+            <PlusCircle size={17} /> List Your Robot
+          </button>
+          <p className="mt-3 text-xs text-ink-500 text-center">
+            List your robot, manage reservations and earn 80% of every rental — with the same account you already use.
+          </p>
+        </section>
 
         {isAdmin && (
           <section className="mt-6 bg-white rounded-3xl border border-ink-100 shadow-sm p-6 sm:p-8">
