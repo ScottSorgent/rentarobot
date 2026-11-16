@@ -4,8 +4,39 @@ export type RobotCategory = 'commercial' | 'residential';
 export type RobotStatus = 'available' | 'rented' | 'maintenance';
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
 export type PlanType = 'rental' | 'lease';
-export type ProviderType = 'individual' | 'sole_proprietor' | 'cleaning_company' | 'company_employee' | 'homeowner' | 'renter';
+export type ProviderType = 'individual' | 'sole_proprietor' | 'cleaning_company' | 'company_employee' | 'homeowner' | 'renter' | 'robot_owner';
 export type ContactMethod = 'email' | 'phone' | 'sms';
+
+export type ListingStatus =
+  | 'draft'
+  | 'pending_review'
+  | 'published'
+  | 'paused'
+  | 'rejected'
+  | 'suspended'
+  | 'changes_requested';
+
+export type EquipmentCategory =
+  | 'vacuum_mop'
+  | 'window_cleaning'
+  | 'floor_polishing'
+  | 'carpet_deep_cleaning'
+  | 'humanoid'
+  | 'other_specialized';
+
+export type OwnerCondition = 'new' | 'refurbished' | 'used';
+
+export interface CityInfo {
+  city_id: string;
+  city_name: string;
+  state: string;
+  state_code: string;
+}
+
+export interface BlackoutRange {
+  start: string;
+  end: string;
+}
 
 export interface Robot {
   id: string;
@@ -24,6 +55,20 @@ export interface Robot {
   specs: Record<string, string>;
   features: string[];
   status: RobotStatus;
+  // Marketplace fields (curated fleet rows have owner_id null).
+  owner_id?: string | null;
+  listing_city_id?: string | null;
+  pickup_zip?: string | null;
+  condition?: OwnerCondition | null;
+  accessories?: string[] | null;
+  pickup_instructions?: string | null;
+  return_instructions?: string | null;
+  blackout_dates?: BlackoutRange[] | null;
+  delivery_available?: boolean | null;
+  delivery_fee?: number | null;
+  equipment_category?: EquipmentCategory | null;
+  listing_status?: ListingStatus | null;
+  review_note?: string | null;
 }
 
 export interface ProviderProfile {
@@ -46,6 +91,7 @@ export interface ProviderProfile {
   other_specialties: string | null;
   home_zip: string;
   service_area_zips: string[];
+  preferred_city_id: string | null;
   rates_include_platform_fee: boolean;
   owned_equipment: boolean;
   equipment_models: string | null;
@@ -83,6 +129,9 @@ export interface OnboardingInput {
   equipment_models?: string;
   automation_experience: string;
   training_completed?: string;
+  // Validated preferred city (standardized id like 'stockton-ca'), saved on
+  // the profile after onboarding via savePreferredCity.
+  preferred_city_id?: string;
 }
 
 export interface Booking {
@@ -120,6 +169,45 @@ export interface Booking {
   outgoing_confirmed_at: string | null;
   incoming_confirmed_at: string | null;
   robots?: Robot | Robot[];
+  // Marketplace fields written by the guarded booking function.
+  owner_id?: string | null;
+  owner_payout?: number | null;
+  platform_commission?: number | null;
+  cancelled_at?: string | null;
+  refund_status?: 'none' | 'requested' | 'processing' | 'refunded' | null;
+}
+
+// Result of the guarded booking RPC; prices always come from the server.
+export interface GuardedBookingResult {
+  status: 'ok';
+  booking_id: string;
+  total: number;
+  owner_payout: number;
+  platform_commission: number;
+}
+
+export interface OwnerListingInput {
+  name: string;
+  tagline: string;
+  description: string;
+  manufacturer: string;
+  model: string;
+  category: RobotCategory;
+  equipment_category: EquipmentCategory;
+  monthly_rate: number;
+  daily_rate: number | null;
+  weekly_rate: number | null;
+  condition: OwnerCondition;
+  accessories: string[];
+  pickup_zip: string;
+  location_label: string;
+  pickup_instructions: string;
+  return_instructions: string;
+  blackout_dates: BlackoutRange[];
+  delivery_available: boolean;
+  delivery_fee: number;
+  specs: Record<string, string>;
+  features: string[];
 }
 
 export interface PricingSnapshot {

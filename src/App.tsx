@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import CatalogPage from '@/components/CatalogPage';
 import HomePage from '@/components/HomePage';
+import ListYourRobotPage from '@/components/ListYourRobotPage';
 import OnboardingPage from '@/components/OnboardingPage';
+import OwnerDashboardPage from '@/components/OwnerDashboardPage';
 import ProfilePage from '@/components/ProfilePage';
 import PricingAdminPage from '@/components/PricingAdminPage';
 import RobotDetailPage from '@/components/RobotDetailPage';
@@ -14,7 +16,9 @@ import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import WelcomePage from '@/components/WelcomePage';
 import { supabase } from '@/lib/supabase';
 import {
-  createBooking,
+  cancelBookingGuarded,
+  createBookingGuarded,
+  fetchBookableRobots,
   fetchHubs,
   fetchIsAdmin,
   fetchMyBookings,
@@ -22,12 +26,18 @@ import {
   fetchPricingSettings,
   fetchProviderProfile,
   fetchRobotPricing,
-  fetchRobots,
 } from '@/lib/api';
 import { DEFAULT_SETTINGS, type Hub, type PricingSettings, type RobotPricing } from '@/lib/pricing';
-import type { Booking, NewBooking, ProviderProfile, Robot } from '@/lib/types';
+import type { Booking, ProviderProfile, Robot } from '@/lib/types';
 
-type View = 'home' | 'catalog' | 'detail' | 'bookings' | 'handoff' | 'profile' | 'rented' | 'rentedGuide' | 'pricingAdmin';
+type View = 'home' | 'catalog' | 'detail' | 'bookings' | 'handoff' | 'profile' | 'rented' | 'rentedGuide' | 'pricingAdmin' | 'listRobot' | 'ownerDashboard';
+
+const CITY_STORAGE_KEY = 'rar_preferred_city';
+
+interface StoredCity {
+  id: string;
+  label: string;
+}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -36,7 +46,17 @@ export default function App() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [adminChecked, setAdminChecked] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
+  // Visitor-scoped catalog: city drives which listings are bookable.
+  const [city, setCity] = useState<StoredCity | null>(() => {
+    try {
+      const raw = localStorage.getItem(CITY_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as StoredCity) : null;
+    } catch {
+      return null;
+    }
+  });
   const [robots, setRobots] = useState<Robot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,9 +65,8 @@ export default function App() {
   const [pricingSettings, setPricingSettings] = useState<PricingSettings>(DEFAULT_SETTINGS);
   const [hubs, setHubs] = useState<Hub[]>([]);
   const [audit, setAudit] = useState<{ id: string; robot_id: string | null; scope: string; summary: string; created_at: string }[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
 
-  const [view, setView] = useState<View>('home');
+  const [view, setView] = useState<View>('catalog');
   const [selected, setSelected] = useState<Robot | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
@@ -103,13 +122,7 @@ export default function App() {
     };
   }, [session]);
 
-  useEffect(() => {
-    fetchRobots()
-      .then((rows) => setRobots(rows))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
+  // Reload pricing data when signed in (used by detail-page quotes + admin).
   const loadPricing = useCallback(async () => {
     try {
       const [settingsRows, pricingRows, hubRows, auditRows, adminFlag] = await Promise.all([
@@ -135,6 +148,36 @@ export default function App() {
     if (session) loadPricing();
   }, [session, loadPricing]);
 
+  // City-scoped catalog. Runs for visitors and signed-in users alike.
+  useEffect(() => {
+    if (!city) {
+      setRobots([]);
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    fetchBookableRobots(city.id)
+      .then((rows) => {
+        if (active) setRobots(rows);
+      })
+      .catch((e: Error) => {
+        if (active) setError(e.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [city]);
+
+  // Signed-in users may keep browsing without a city, but profile existence
+  // still gates booking screens.
+  useEffect(() => {
+    if (!city && profileLoading === false && view === 'catalog') return;
+  }, [city, profileLoading, view]);
+
   const loadBookings = useCallback(async () => {
     setBookingsLoading(true);
     setBookingsError(null);
@@ -154,6 +197,18 @@ export default function App() {
     }
   }, [session, view, loadBookings]);
 
+  function pickCity(id: string, label: string) {
+    const next = { id, label };
+    setCity(next);
+    try {
+      localStorage.setItem(CITY_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Storage unavailable (private mode) — city still applies for this visit.
+    }
+    setSelected(null);
+    window.scrollTo({ top: 0 });
+  }
+
   if (authLoading || (session && (profileLoading || !adminChecked))) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-ink-50">
@@ -167,7 +222,41 @@ export default function App() {
   }
 
   if (!session) {
-    return <WelcomePage onAuthed={goCatalogAfterAuth} />;
+    if (view === 'detail' && selected) {
+      return (
+        <RobotDetailPage
+          robot={selected}
+          pricing={pricingByRobot.get(selected.id) ?? null}
+          settings={pricingSettings}
+          submitting={false}
+          submitError="Sign in to book this robot."
+          customerCityId={city?.id ?? null}
+          customerCityName={city?.label ?? null}
+          onBack={() => setView('catalog')}
+          onSubmitGuarded={() => undefined}
+          onViewBookings={() => setView('catalog')}
+        />
+      );
+    }
+    return (
+      <CatalogPage
+        robots={robots}
+        loading={loading}
+        error={error}
+        userEmail=""
+        cityId={city?.id ?? null}
+        cityName={city?.label ?? null}
+        onPickCity={pickCity}
+        onOpenRobot={(robot) => {
+          // Visitors browse freely; booking asks them to sign in.
+          setSelected(robot);
+          setView('detail');
+        }}
+        onSignOut={() => undefined}
+        onGoHome={() => setView('catalog')}
+        onOpenBookings={() => setView('catalog')}
+      />
+    );
   }
 
   if (profileError) {
@@ -250,11 +339,23 @@ export default function App() {
     window.scrollTo({ top: 0 });
   }
 
-  async function submitBooking(booking: NewBooking) {
+  async function submitBookingGuarded(input: {
+    robotId: string;
+    start: string;
+    months: number;
+    renterName: string;
+    renterEmail: string;
+    renterPhone: string;
+    usageType: string;
+    cityId: string;
+    notes: string;
+    damageProtection: boolean;
+    delivery: boolean;
+  }) {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await createBooking(booking);
+      await createBookingGuarded(input);
       setBookings([]);
       setView('bookings');
       await loadBookings();
@@ -279,6 +380,16 @@ export default function App() {
 
   function openPricingAdmin() {
     setView('pricingAdmin');
+    window.scrollTo({ top: 0 });
+  }
+
+  function openOwnerDashboard() {
+    setView('ownerDashboard');
+    window.scrollTo({ top: 0 });
+  }
+
+  function openListRobot() {
+    setView('listRobot');
     window.scrollTo({ top: 0 });
   }
 
@@ -308,9 +419,37 @@ export default function App() {
         settings={pricingSettings}
         submitting={submitting}
         submitError={submitError}
+        customerCityId={city?.id ?? null}
+        customerCityName={city?.label ?? null}
         onBack={goCatalog}
-        onSubmit={submitBooking}
+        onSubmitGuarded={submitBookingGuarded}
         onViewBookings={openBookings}
+      />
+    );
+  }
+
+  if (view === 'listRobot') {
+    return (
+      <ListYourRobotPage
+        userEmail={session.user.email ?? ''}
+        onBack={goCatalog}
+        onSubmitted={openOwnerDashboard}
+        onSignOut={handleSignOut}
+        onGoHome={goHome}
+        onOpenBookings={openBookings}
+      />
+    );
+  }
+
+  if (view === 'ownerDashboard') {
+    return (
+      <OwnerDashboardPage
+        userEmail={session.user.email ?? ''}
+        onBack={goCatalog}
+        onSignOut={handleSignOut}
+        onGoHome={goHome}
+        onOpenBookings={openBookings}
+        onNewListing={openListRobot}
       />
     );
   }
@@ -351,6 +490,7 @@ export default function App() {
           onOpenRobot={openRobot}
           onOpenBookings={openBookings}
           onSignOut={handleSignOut}
+          onList={openListRobot}
         />
         {mobileNav}
       </>
@@ -426,6 +566,8 @@ export default function App() {
             fetchProviderProfile().then(setProviderProfile).catch(() => undefined);
           }}
           onOpenPricingAdmin={openPricingAdmin}
+          onOpenOwnerDashboard={openOwnerDashboard}
+          onOpenListRobot={openListRobot}
         />
         {mobileNav}
       </>
@@ -439,6 +581,9 @@ export default function App() {
         loading={loading}
         error={error}
         userEmail={session.user.email ?? ''}
+        cityId={city?.id ?? null}
+        cityName={city?.label ?? null}
+        onPickCity={pickCity}
         onOpenRobot={openRobot}
         onSignOut={handleSignOut}
         onGoHome={goHome}
