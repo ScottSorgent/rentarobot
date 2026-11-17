@@ -96,7 +96,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
             }`
             }
           >
-            <PackageCheck size={15} /> My bookings
+            <PackageCheck size={15} /> My Bookings
           </button>
         </nav>
 
@@ -123,7 +123,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
                 onClick={() => { setAccountOpen(false); onBookings(); }}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-ink-700 hover:bg-ink-50 transition-colors"
               >
-                <PackageCheck size={16} /> My bookings
+                <PackageCheck size={16} /> My Bookings
               </button>
               <button
                 onClick={() => { setAccountOpen(false); onSignOut(); }}

@@ -51,7 +51,7 @@ export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpen
               Browse the catalog <ArrowRight size={18} />
             </button>
             <button onClick={onOpenBookings} className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3.5 rounded-xl border border-white/20 backdrop-blur transition-colors">
-              <CalendarCheck size={18} /> My bookings
+              <CalendarCheck size={18} /> My Bookings
             </button>
           </div>
         </div>
