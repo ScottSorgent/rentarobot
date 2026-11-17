@@ -290,7 +290,7 @@ export default function ListYourRobotPage({
           onClick={onBack}
           className="inline-flex items-center gap-2 text-sm font-semibold text-ink-500 hover:text-ink-900 transition-colors"
         >
-          <ArrowLeft size={16} /> Back to catalog
+          <ArrowLeft size={16} /> Back to Catalog
         </button>
 
         <div className="mt-4">
@@ -380,8 +380,8 @@ export default function ListYourRobotPage({
             <p className="mt-2 text-xs text-ink-500">Up to 8 photos. Use real photos of your own robot.</p>
           </Section>
 
-          <Section title="Robot details" icon={<Check size={17} />}>
-            <Field label="Listing name" value={name} onChange={setName} placeholder="e.g. AuroraHome Butler H1" required />
+          <Section title="Robot Details" icon={<Check size={17} />}>
+            <Field label="Listing Name" value={name} onChange={setName} placeholder="e.g. AuroraHome Butler H1" required />
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Manufacturer" value={manufacturer} onChange={setManufacturer} placeholder="e.g. Aurora Robotics" />
               <Field label="Model" value={model} onChange={setModel} placeholder="e.g. H1" />
@@ -419,27 +419,29 @@ export default function ListYourRobotPage({
               hint="List only accessories you actually have. Complete systems with docks are prioritized."
             />
             <label className="block">
-              <span className="text-xs font-semibold text-ink-700">Extra specifications (one per line, "Label: value")</span>
+              <span className="text-xs font-semibold text-ink-700">Extra Specifications (one per line)</span>
               <textarea
                 value={specsText}
                 onChange={(event) => setSpecsText(event.target.value)}
                 rows={3}
-                placeholder={'Battery life: 4 hours\nWeight: 28 kg'}
+                placeholder={'e.g. Battery Life: 4 hours\nWeight: 20 lbs'}
                 className="mt-1.5 w-full border border-ink-200 rounded-xl px-3.5 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
               />
             </label>
           </Section>
 
           <Section title="Value" icon={<CircleDollarSign size={17} />}>
-            <Field
-              label="What the robot is worth"
-              value={robotValue}
-              onChange={setRobotValue}
-              type="number"
-              placeholder="2500"
-              required
-              hint="Sets your rental price automatically. A $2,500 robot rents for $200/month."
-            />
+            <div className="max-w-md">
+              <Field
+                label="What the robot is worth"
+                value={robotValue}
+                onChange={setRobotValue}
+                type="number"
+                placeholder="2500"
+                required
+                hint="Sets your rental price automatically. A $2,500 robot rents for $200/month."
+              />
+            </div>
             {editingRobot && (
               <p className="text-xs text-ink-500">
                 Current rental price: {formatMoney(Number(editingRobot.monthly_rate))}/month. Enter the robot's value above and save to re-price the rental from it.
@@ -457,11 +459,11 @@ export default function ListYourRobotPage({
             )}
           </Section>
 
-          <Section title="Pickup location" icon={<MapPin size={17} />}>
-            <div className="grid sm:grid-cols-2 gap-3">
+          <Section title="Pickup Location" icon={<MapPin size={17} />}>
+            <div className="grid sm:grid-cols-[168px_1fr] gap-3 items-start">
               <div>
                 <Field
-                  label="Pickup ZIP code"
+                  label="Pickup ZIP Code"
                   value={pickupZip}
                   onChange={(value) => void checkZip(value)}
                   placeholder="95202"
@@ -479,18 +481,18 @@ export default function ListYourRobotPage({
                 )}
               </div>
               <Field
-                label="Pickup instructions"
+                label="Pickup Instructions"
                 value={pickupInstructions}
                 onChange={setPickupInstructions}
-                placeholder="Meet at the front lobby, weekdays after 5pm."
-              />
-              <Field
-                label="Return instructions"
-                value={returnInstructions}
-                onChange={setReturnInstructions}
-                placeholder="Return with a full battery and the same accessories."
+                placeholder="e.g. Meet at the front lobby, weekdays after 5 PM."
               />
             </div>
+            <Field
+              label="Return Instructions"
+              value={returnInstructions}
+              onChange={setReturnInstructions}
+              placeholder="e.g. Return with a full battery and the same accessories."
+            />
           </Section>
 
           <Section title="Delivery (optional)" icon={<Truck size={17} />}>
@@ -511,7 +513,7 @@ export default function ListYourRobotPage({
             )}
           </Section>
 
-          <Section title="Blackout dates" icon={<Calendar size={17} />}>
+          <Section title="Blackout Dates" icon={<Calendar size={17} />}>
             {blackouts.length === 0 && (
               <p className="text-sm text-ink-500">Optional. Block out dates when the robot isn't available.</p>
             )}
