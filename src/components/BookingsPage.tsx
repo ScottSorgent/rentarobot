@@ -43,7 +43,7 @@ export default function BookingsPage({ bookings, loading, error, userEmail, onBa
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 md:py-14 pb-28 md:pb-14">
         <h1 className="font-display text-3xl font-bold tracking-tight">My robot plans</h1>
-        <p className="text-ink-500 mt-2">All rentals and leases on your account, newest first.</p>
+        <p className="text-ink-500 mt-2">All rentals on your account, newest first.</p>
 
         {error && (
           <div className="mt-6 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm flex flex-wrap items-center gap-3">
@@ -73,7 +73,7 @@ export default function BookingsPage({ bookings, loading, error, userEmail, onBa
           <div className="mt-10 text-center bg-white rounded-2xl border border-ink-100 py-16 px-6">
             <PackageOpen size={36} className="mx-auto text-ink-300" />
             <p className="mt-4 font-semibold text-ink-900">No bookings yet</p>
-            <p className="text-sm text-ink-500 mt-1">Your rentals and leases will appear here once you reserve a cleaning robot.</p>
+            <p className="text-sm text-ink-500 mt-1">Your rentals will appear here once you reserve a cleaning robot.</p>
             <button
               onClick={onBrowse}
               className="mt-6 inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors"
@@ -105,7 +105,7 @@ export default function BookingsPage({ bookings, loading, error, userEmail, onBa
                       <h3 className="font-display font-semibold">{robot ? robot.name : 'Cleaning robot plan'}</h3>
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.classes}`}>{st.label}</span>
                       <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-ink-100 text-ink-700">
-                        {b.plan_type === 'lease' ? 'Monthly lease' : 'Short-term rental'}
+                        {b.plan_type === 'lease' ? 'Monthly rental' : 'Short-term rental'}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-ink-500 inline-flex flex-wrap items-center gap-2">

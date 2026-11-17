@@ -41,7 +41,7 @@ export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpen
             <Store size={15} /> Pickup Only — Reserve Here, Collect from Peer
           </p>
           <h1 className="animate-fade-up font-display text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-[1.1] max-w-2xl" style={{ animationDelay: '80ms' }}>
-            Premium cleaning power, on demand.
+            Cleaning Power and Home Tasks Automated, on Demand.
           </h1>
           <p className="animate-fade-up mt-5 text-lg text-ink-200 max-w-xl leading-relaxed" style={{ animationDelay: '160ms' }}>
             Rent premium cleaning robots for deep cleaning floors, carpets, streak-free glass, and the corners that ordinary equipment misses.
@@ -59,13 +59,13 @@ export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpen
 
       <section className="bg-white border-b border-ink-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14 md:py-20">
-          <h2 className="font-display text-2xl md:text-3xl font-bold tracking-tight text-center">How pickup works</h2>
-          <p className="text-ink-500 text-center mt-2 max-w-lg mx-auto">Three steps from browsing to a robot in your vehicle.</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold tracking-tight text-center">How Pickup Works</h2>
+          <p className="text-ink-500 text-center mt-2 max-w-lg mx-auto">Three Steps from Browsing to a Working Robot</p>
           <div className="mt-12 grid md:grid-cols-3 gap-8 md:gap-6">
             {[
-              { icon: Bot, title: 'Pick your cleaning partner', text: 'Compare floor-care and detail-cleaning robots by size, runtime, ratings and availability, then reserve your unit online.' },
-              { icon: PackageCheck, title: 'Rent or lease', text: 'Choose a short rental for a busy week or a monthly lease for dependable day-to-day work. Your quote updates instantly.' },
-              { icon: Store, title: 'Pick up & get started', text: 'Reserve here, then collect the robot directly from a fellow renter through a peer-to-peer handoff — no store stop required. Every unit is inspected, sanitized and ready to work when you arrive.' },
+              { icon: Bot, title: 'Pick Your Robot', text: 'Compare floor-care and detail-cleaning robots by size, runtime, ratings and availability, then reserve your unit online.' },
+              { icon: PackageCheck, title: 'Choose Your Rental Period', text: 'You can choose a short rental period for a day to monthly for dependable work.' },
+              { icon: Store, title: 'Pick Up & Get Started', text: 'Book and reserve here, then collect the robot directly from the robot owner or renter through a peer-to-peer handoff — no store stop required. Every unit is inspected, sanitized and ready to work when you arrive. You gain a lower rental price.' },
             ].map((s, i) => (
               <div key={s.title} className="relative">
                 <div className="flex items-center gap-4">
@@ -86,27 +86,26 @@ export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpen
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14 md:py-20 grid lg:grid-cols-[0.8fr_1.2fr] gap-10 lg:gap-16 items-center">
           <div>
             <span className="inline-flex items-center gap-2 text-brand-800 text-sm font-semibold bg-brand-100 border border-brand-200 rounded-full px-3.5 py-1.5">
-              <MapPin size={15} /> Featured units ready for pickup
+              <MapPin size={15} /> Reference listings — see what owners offer
             </span>
             <h2 className="mt-5 font-display text-3xl md:text-4xl font-bold tracking-tight max-w-md">
-              Deep cleaning, corner to corner.
+              What a great robot listing looks like.
             </h2>
             <p className="mt-4 text-ink-600 leading-relaxed max-w-md">
-              Give every client a polished finish without carrying every tool yourself. Pair high-suction floor care with edge-focused detail tools for the surfaces and corners that need extra attention.
+              These company examples show owners and renters what to expect from a Rent-A-Robot listing — specs, photos, pickup details and fair pricing. Real rentals in the catalog come from robot owners like you.
             </p>
             <button
               onClick={onBrowse}
               className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-brand-800 hover:text-brand-700 transition-colors"
             >
-              Explore the full catalog <ArrowRight size={16} />
+              Browse the Robotic Catalog <ArrowRight size={16} />
             </button>
           </div>
           <div className="grid sm:grid-cols-3 gap-4">
             {featured.map((robot) => (
-              <button
+              <div
                 key={robot.id}
-                onClick={() => onOpenRobot(robot)}
-                className="group relative aspect-[4/5] overflow-hidden rounded-3xl bg-ink-200 shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                className="group relative aspect-[4/5] overflow-hidden rounded-3xl bg-ink-200 shadow-lg"
               >
                 <img
                   src={robot.image_url}
@@ -116,9 +115,9 @@ export default function HomePage({ robots, bookings, userEmail, onBrowse, onOpen
                 />
                 <figcaption className="absolute inset-x-3 bottom-3 bg-ink-950/80 text-white backdrop-blur px-3 py-2 rounded-xl text-sm font-semibold flex items-center justify-between gap-2">
                   <span className="truncate">{robot.name}</span>
-                  <ArrowRight size={16} className="shrink-0" />
+                  <span className="text-[10px] uppercase tracking-wide text-ink-300 shrink-0">Example</span>
                 </figcaption>
-              </button>
+              </div>
             ))}
           </div>
         </div>

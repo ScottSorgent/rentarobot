@@ -18,6 +18,7 @@ interface Props {
   onSignOut: () => void;
   onGoHome: () => void;
   onOpenBookings: () => void;
+  onListRobot: () => void;
 }
 
 const categories = [
@@ -88,6 +89,7 @@ export default function CatalogPage({
   onSignOut,
   onGoHome,
   onOpenBookings,
+  onListRobot,
 }: Props) {
   const [filter, setFilter] = useState<CategoryId>('all');
   const [query, setQuery] = useState('');
@@ -155,7 +157,7 @@ export default function CatalogPage({
         active="browse"
         onHome={onGoHome}
         onBrowse={() => window.scrollTo({ top: 0 })}
-        onList={() => undefined}
+        onList={onListRobot}
         onBookings={onOpenBookings}
         onSignOut={onSignOut}
       />

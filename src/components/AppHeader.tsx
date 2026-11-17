@@ -38,7 +38,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
       label: 'Robotic Catalog',
       onClick: onBrowse,
       icon: Bot,
-      idle: 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 hover:text-sky-900',
+      idle: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 hover:text-rose-900',
     },
     {
       id: 'list' as const,
@@ -49,12 +49,13 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
     },
   ];
 
-  // Shared emphasis for the current page: tinted fill plus a darker stroke.
-  const activeClasses = 'bg-brand-100 text-brand-900 border-brand-700 ring-2 ring-brand-700 font-semibold';
+  // Shared emphasis for the current page: a solid dark fill with white text,
+  // so the selected tab reads clearly without a stroke outline.
+  const activeClasses = 'bg-ink-900 text-white border-ink-900 font-semibold';
 
   return (
     <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-ink-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
         <a
           href="#"
           className="hidden md:flex items-center gap-2.5 shrink-0"
@@ -64,11 +65,11 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
             window.scrollTo({ top: 0 });
           }}
         >
-          <img src="/Glossy_Robot_Calendar_App_Icon.png" alt="Rent-A-Robot logo" className="w-9 h-9 rounded-xl object-cover" />
+          <img src="/Glossy_Robot_Calendar_App_Icon.png" alt="Rent-A-Robot logo" className="w-12 h-12 rounded-xl object-cover" />
           <span className="font-display font-bold text-xl tracking-tight">Rent-A-Robot</span>
         </a>
 
-        <nav className="hidden md:flex items-center gap-1.5 text-sm font-medium">
+        <nav className="hidden md:flex items-center justify-center gap-2 text-sm font-medium">
           {navItems.map((item) => {
             const isActive = active === item.id;
             return (
@@ -77,7 +78,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
                 type="button"
                 onClick={item.onClick}
                 aria-current={isActive ? 'page' : undefined}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${
                   isActive ? activeClasses : item.idle
                 }`}
               >
@@ -88,7 +89,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
           <button
             type="button"
             onClick={onBookings}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${
               active === 'bookings'
                 ? activeClasses
                 : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:text-amber-900'
@@ -99,7 +100,7 @@ export default function AppHeader({ userEmail, active, onHome, onBrowse, onList,
           </button>
         </nav>
 
-        <div className="ml-auto" ref={accountRef}>
+        <div className="flex justify-end items-center gap-2" ref={accountRef}>
           <button
             onClick={() => setAccountOpen((v) => !v)}
             className="md:hidden inline-flex items-center gap-2 bg-ink-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-ink-800 transition-colors"
