@@ -386,7 +386,7 @@ export default function ListYourRobotPage({
               <Field label="Manufacturer" value={manufacturer} onChange={setManufacturer} placeholder="e.g. Aurora Robotics" />
               <Field label="Model" value={model} onChange={setModel} placeholder="e.g. H1" />
             </div>
-            <Field label="Short tagline" value={tagline} onChange={setTagline} placeholder="Laundry, folding, dishes and tidy-up — one household butler." />
+            <Field label="Short Tagline" value={tagline} onChange={setTagline} placeholder="e.g. Laundry, folding, dishes and tidy-up — one household butler." />
             <label className="block">
               <span className="text-xs font-semibold text-ink-700">What can the robot do? *</span>
               <textarea
