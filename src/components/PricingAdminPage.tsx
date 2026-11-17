@@ -160,7 +160,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
     setSaveError(null);
     try {
       const robot = robots.find((r) => r.id === draft.robot_id);
-      const summary = `Updated listing for ${robot?.name ?? draft.robot_id}: owner monthly price ${draft.owner_monthly_price}, minimum lease ${draft.min_lease_months_override ?? 'platform default'} months.`;
+      const summary = `Updated listing for ${robot?.name ?? draft.robot_id}: owner monthly price ${draft.owner_monthly_price}, minimum rental ${draft.min_lease_months_override ?? 'platform default'} months.`;
       await applyCatalogRates(draft.robot_id, { monthly_rate: draft.owner_monthly_price }, summary);
       setEditingRobotId(null);
       setDraft(null);
@@ -374,7 +374,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                           onChange={(v) => setDraft({ ...draft, owner_monthly_price: v })}
                         />
                         <SelectField
-                          label="Minimum lease"
+                          label="Minimum rental"
                           value={draft.min_lease_months_override == null ? '' : String(draft.min_lease_months_override)}
                           options={[['', 'Platform default'], ['1', '1 month'], ['3', '3 months'], ['6', '6 months'], ['12', '12 months']]}
                           onChange={(v) => setDraft({ ...draft, min_lease_months_override: v === '' ? null : Number(v) })}
@@ -382,7 +382,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
                         <SelectField
                           label="Distribution hub"
                           value={draft.hub_id ?? ''}
-                          options={[[ '', 'Unassigned' ], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
+                          options={[['', 'Unassigned'], ...hubs.map((h) => [h.id, h.name] as [string, string])]}
                           onChange={(v) => setDraft({ ...draft, hub_id: v || null })}
                         />
                       </div>
@@ -428,7 +428,7 @@ export default function PricingAdminPage({ robots, pricingByRobot, settings, hub
               step="0.01"
             />
             <NumberField
-              label="Minimum lease (months)"
+              label="Minimum rental (months)"
               value={settingsDraft.min_lease_months}
               onChange={(v) => setSettingsDraft((s) => ({ ...s, min_lease_months: Math.max(1, Math.round(v)) }))}
               step="1"

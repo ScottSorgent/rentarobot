@@ -1,5 +1,5 @@
-import { ArrowLeft, Building2, Calendar, Check, Home, MapPin, ShieldCheck, Star, Truck, Wrench } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Building2, Calendar, Check, ChevronLeft, ChevronRight, Home, MapPin, ShieldCheck, Star, Truck, Wrench } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Robot, RobotCategory } from '@/lib/types';
 import { daysBetween, monthsBetween, weeksBetween, formatMoney, isHumanoid, statusLabel } from '@/lib/types';
 import type { OwnerRates, PricingSettings, RentalDuration, RobotPricing } from '@/lib/pricing';
@@ -63,6 +63,68 @@ const UNIT_PER: Record<RentalDuration, string> = {
 };
 
 const DURATIONS: RentalDuration[] = ['daily', 'weekly', 'monthly'];
+
+// All photos for a listing, primary first; falls back to the single image so
+// older single-photo listings render identically.
+function galleryPhotos(robot: Robot): string[] {
+  const urls = (robot.photo_urls ?? []).filter(Boolean);
+  if (urls.length === 0) return [robot.image_url];
+  if (!urls.includes(robot.image_url)) return [robot.image_url, ...urls];
+  return urls;
+}
+
+function PhotoGallery({ robot }: { robot: Robot }) {
+  const photos = galleryPhotos(robot);
+  const [index, setIndex] = useState(0);
+  const touchStart = useRef<number | null>(null);
+  const go = (delta: number) => setIndex((i) => (i + delta + photos.length) % photos.length);
+
+  return (
+    <div
+      className="relative rounded-2xl overflow-hidden border border-ink-100 shadow-sm aspect-[4/3] bg-ink-100 group"
+      onTouchStart={(e) => { touchStart.current = e.touches[0].clientX; }}
+      onTouchEnd={(e) => {
+        if (touchStart.current == null) return;
+        const dx = e.changedTouches[0].clientX - touchStart.current;
+        touchStart.current = null;
+        if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+      }}
+    >
+      {photos.map((url, i) => (
+        <img
+          key={url}
+          src={url}
+          alt={`${robot.name} photo ${i + 1}`}
+          loading={i === 0 ? 'eager' : 'lazy'}
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${i === index ? 'opacity-100' : 'opacity-0'}`}
+        />
+      ))}
+      {photos.length > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => go(-1)}
+            aria-label="Previous photo"
+            className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-ink-800 rounded-full p-2 shadow-md transition-opacity md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => go(1)}
+            aria-label="Next photo"
+            className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-ink-800 rounded-full p-2 shadow-md transition-opacity md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
+          >
+            <ChevronRight size={18} />
+          </button>
+          <span className="absolute bottom-3 right-3 bg-ink-950/75 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+            {index + 1} / {photos.length}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function RobotDetailPage({ robot, pricing, settings, submitting, submitError, customerCityId, customerCityName, onBack, onSubmitGuarded, onViewBookings }: Props) {
   const humanoid = isHumanoid(robot);
@@ -159,9 +221,7 @@ export default function RobotDetailPage({ robot, pricing, settings, submitting, 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 md:py-12">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
           <div>
-            <div className="rounded-2xl overflow-hidden border border-ink-100 shadow-sm aspect-[4/3] bg-ink-100">
-              <img src={robot.image_url} alt={robot.name} className="w-full h-full object-cover" />
-            </div>
+            <PhotoGallery robot={robot} />
 
             <div className="mt-6">
               <div className="flex items-center gap-2 text-sm text-ink-500">
