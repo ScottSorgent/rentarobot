@@ -298,7 +298,7 @@ export default function ListYourRobotPage({
             {isEdit ? 'Edit Listing' : 'List Your Robot'}
           </p>
           <h1 className="mt-2 font-display text-2xl md:text-3xl font-bold tracking-tight text-ink-950">
-            {isEdit ? `Update “${editingRobot!.name}”.` : 'Rent out your robot to customers in your city.'}
+            {isEdit ? `Update “${editingRobot!.name}”.` : 'Rent Out Your Robot to Customers in Your City'}
           </h1>
           {isEdit ? (
             <p className="mt-3 text-sm text-ink-500 leading-relaxed">
