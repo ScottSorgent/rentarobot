@@ -388,7 +388,7 @@ export default function ListYourRobotPage({
             </div>
             <Field label="Short Tagline" value={tagline} onChange={setTagline} placeholder="e.g. Laundry, folding, dishes and tidy-up — one household butler." />
             <label className="block">
-              <span className="text-xs font-semibold text-ink-700">What can the robot do? *</span>
+              <span className="text-xs font-semibold text-ink-700">What can the robot do?</span>
               <textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -600,7 +600,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold text-ink-700">{label}{required && ' *'}</span>
+      <span className="text-xs font-semibold text-ink-700">{label}</span>
       <input
         type={type}
         value={value}
