@@ -25,6 +25,7 @@ import {
   fetchPricingAudit,
   fetchPricingSettings,
   fetchProviderProfile,
+  fetchReferenceFleet,
   fetchRobotPricing,
 } from '@/lib/api';
 import { DEFAULT_SETTINGS, type Hub, type PricingSettings, type RobotPricing } from '@/lib/pricing';
@@ -58,6 +59,7 @@ export default function App() {
     }
   });
   const [robots, setRobots] = useState<Robot[]>([]);
+  const [referenceFleet, setReferenceFleet] = useState<Robot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,6 +70,7 @@ export default function App() {
 
   const [view, setView] = useState<View>('catalog');
   const [selected, setSelected] = useState<Robot | null>(null);
+  const [editingRobot, setEditingRobot] = useState<Robot | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -172,11 +175,20 @@ export default function App() {
     };
   }, [city]);
 
-  // Signed-in users may keep browsing without a city, but profile existence
-  // still gates booking screens.
+  // Company showcase robots: same list on every page load, city-independent.
   useEffect(() => {
-    if (!city && profileLoading === false && view === 'catalog') return;
-  }, [city, profileLoading, view]);
+    let active = true;
+    fetchReferenceFleet()
+      .then((rows) => {
+        if (active) setReferenceFleet(rows);
+      })
+      .catch(() => {
+        // Reference showcase is decorative; the catalog still works without it.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const loadBookings = useCallback(async () => {
     setBookingsLoading(true);
@@ -255,6 +267,7 @@ export default function App() {
         onSignOut={() => undefined}
         onGoHome={() => setView('catalog')}
         onOpenBookings={() => setView('catalog')}
+        onListRobot={() => setView('catalog')}
       />
     );
   }
@@ -389,6 +402,13 @@ export default function App() {
   }
 
   function openListRobot() {
+    setEditingRobot(null);
+    setView('listRobot');
+    window.scrollTo({ top: 0 });
+  }
+
+  function openEditRobot(robot: Robot) {
+    setEditingRobot(robot);
     setView('listRobot');
     window.scrollTo({ top: 0 });
   }
@@ -431,12 +451,18 @@ export default function App() {
   if (view === 'listRobot') {
     return (
       <ListYourRobotPage
+        key={editingRobot?.id ?? 'new'}
         userEmail={session.user.email ?? ''}
         onBack={goCatalog}
         onSubmitted={openOwnerDashboard}
         onSignOut={handleSignOut}
         onGoHome={goHome}
         onOpenBookings={openBookings}
+        editingRobot={editingRobot}
+        onFinished={() => {
+          setEditingRobot(null);
+          openOwnerDashboard();
+        }}
       />
     );
   }
@@ -450,6 +476,7 @@ export default function App() {
         onGoHome={goHome}
         onOpenBookings={openBookings}
         onNewListing={openListRobot}
+        onEditListing={openEditRobot}
       />
     );
   }
@@ -483,7 +510,7 @@ export default function App() {
     return (
       <>
         <HomePage
-          robots={robots}
+          robots={referenceFleet}
           bookings={bookings}
           userEmail={session.user.email ?? ''}
           onBrowse={goCatalog}
@@ -588,6 +615,7 @@ export default function App() {
         onSignOut={handleSignOut}
         onGoHome={goHome}
         onOpenBookings={openBookings}
+        onListRobot={openListRobot}
       />
       {mobileNav}
     </>

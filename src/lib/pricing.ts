@@ -82,6 +82,17 @@ export function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+// Rental pricing algorithm: the owner states what the robot is worth and the
+// platform derives the rental rate from that value. 8% of value per month —
+// a $2,500 robot rents for $200/month, a $500 robot for $40/month.
+export const MONTHLY_RATE_PCT_OF_VALUE = 0.08;
+
+export function monthlyRateFromValue(robotValue: number): number {
+  const v = Math.max(0, Number(robotValue) || 0);
+  if (v <= 0) return 0;
+  return round2(Math.max(5, v * MONTHLY_RATE_PCT_OF_VALUE));
+}
+
 export const UTILIZATION_LEVELS = [0.6, 0.7, 0.8, 0.9, 1.0] as const;
 
 export function scenarioUtilization(settings: PricingSettings, level: 0.6 | 0.7 | 0.8 | 0.9 | 1.0): number {

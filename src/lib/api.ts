@@ -68,6 +68,14 @@ export async function fetchBookableRobots(cityId: string): Promise<Robot[]> {
   return (data ?? []) as Robot[];
 }
 
+// Company showcase robots: examples of what a listing looks like, shown on
+// the home page only. They are not rentable in the catalog.
+export async function fetchReferenceFleet(): Promise<Robot[]> {
+  const { data, error } = await supabase.rpc('reference_fleet_robots');
+  if (error) throw new Error('Could not load the reference robots.');
+  return (data ?? []) as Robot[];
+}
+
 export async function createBookingGuarded(input: {
   robotId: string;
   start: string;
@@ -143,6 +151,21 @@ export async function ownerUpdateListing(robotId: string, patch: Record<string, 
     p_patch: patch,
   });
   if (error) throw new Error(error.message);
+}
+
+// Safe-delete gate: true only when the signed-in owner owns the storage file
+// and no listing still references the photo.
+export async function ownerPhotoCanDelete(url: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('owner_photo_can_delete', { p_url: url });
+  if (error) return false;
+  return data === true;
+}
+
+export async function deleteListingPhotoFile(url: string): Promise<void> {
+  const path = url.split('/listing-photos/')[1];
+  if (!path) throw new Error('Could not identify that photo file.');
+  const { error } = await supabase.storage.from('listing-photos').remove([decodeURIComponent(path)]);
+  if (error) throw new Error('Could not delete the photo file.');
 }
 
 export async function ownerSetListingStatus(robotId: string, status: string): Promise<void> {

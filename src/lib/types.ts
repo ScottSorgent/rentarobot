@@ -22,9 +22,19 @@ export type EquipmentCategory =
   | 'floor_polishing'
   | 'carpet_deep_cleaning'
   | 'humanoid'
+  | 'humanoid_household'
   | 'other_specialized';
 
-export type OwnerCondition = 'new' | 'refurbished' | 'used';
+export type OwnerCondition =
+  | 'new'
+  | 'refurbished'
+  | 'used'
+  | 'new_in_box'
+  | 'new_open_box'
+  | 'like_new'
+  | 'good'
+  | 'fair'
+  | 'needs_service';
 
 export interface CityInfo {
   city_id: string;
@@ -69,6 +79,7 @@ export interface Robot {
   equipment_category?: EquipmentCategory | null;
   listing_status?: ListingStatus | null;
   review_note?: string | null;
+  photo_urls?: string[] | null;
 }
 
 export interface ProviderProfile {
