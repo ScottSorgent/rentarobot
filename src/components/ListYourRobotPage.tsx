@@ -478,20 +478,19 @@ export default function ListYourRobotPage({
                   <p className="mt-1.5 text-xs text-red-700">We don't serve that ZIP yet.</p>
                 )}
               </div>
-              <Field label="Neighborhood label (optional)" value={locationLabel} onChange={setLocationLabel} placeholder="Downtown Stockton" hint="Shown to renters. Your exact address stays private until a booking is confirmed." />
+              <Field
+                label="Pickup instructions"
+                value={pickupInstructions}
+                onChange={setPickupInstructions}
+                placeholder="Meet at the front lobby, weekdays after 5pm."
+              />
+              <Field
+                label="Return instructions"
+                value={returnInstructions}
+                onChange={setReturnInstructions}
+                placeholder="Return with a full battery and the same accessories."
+              />
             </div>
-            <Field
-              label="Pickup instructions"
-              value={pickupInstructions}
-              onChange={setPickupInstructions}
-              placeholder="Meet at the front lobby, weekdays after 5pm."
-            />
-            <Field
-              label="Return instructions"
-              value={returnInstructions}
-              onChange={setReturnInstructions}
-              placeholder="Return with a full battery and the same accessories."
-            />
           </Section>
 
           <Section title="Delivery (optional)" icon={<Truck size={17} />}>
