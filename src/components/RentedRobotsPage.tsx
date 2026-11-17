@@ -91,7 +91,7 @@ export default function RentedRobotsPage({ bookings, loading, error, onOpenRobot
                     {' → '}
                     {new Date(booking.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     <span aria-hidden>·</span>
-                    {booking.plan_type === 'lease' ? 'Monthly lease' : 'Short-term rental'}
+                    {booking.plan_type === 'lease' ? 'Monthly rental' : 'Short-term rental'}
                   </p>
                 </div>
                 <span className="shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-3 py-1.5 self-start sm:self-center">

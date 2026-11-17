@@ -49,7 +49,7 @@ export default function RentedRobotGuidePage({ robot, booking, onBack }: Props) 
                 {' → '}
                 {new Date(booking.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 <span aria-hidden>·</span>
-                {booking.plan_type === 'lease' ? 'Monthly lease' : 'Short-term rental'}
+                {booking.plan_type === 'lease' ? 'Monthly rental' : 'Short-term rental'}
               </p>
             </div>
           </div>
@@ -130,7 +130,7 @@ export default function RentedRobotGuidePage({ robot, booking, onBack }: Props) 
           </ul>
         </Section>
 
-        <Section icon={<ShieldCheck size={18} />} title="Manufacturer's warranty" subtitle="What's covered on your rental or lease.">
+        <Section icon={<ShieldCheck size={18} />} title="Manufacturer's warranty" subtitle="What's covered on your rental.">
           <div className="bg-white border border-ink-100 rounded-xl divide-y divide-ink-100">
             <WarrantyRow label="Coverage" value={guide.warranty.coverage} />
             <WarrantyRow label="Duration" value={guide.warranty.duration} />

@@ -21,6 +21,7 @@ interface Props {
   onGoHome: () => void;
   onOpenBookings: () => void;
   onNewListing: () => void;
+  onEditListing: (robot: Robot) => void;
 }
 
 const statusLabels: Record<ListingStatus, string> = {
@@ -50,6 +51,7 @@ export default function OwnerDashboardPage({
   onGoHome,
   onOpenBookings,
   onNewListing,
+  onEditListing,
 }: Props) {
   const [listings, setListings] = useState<Robot[]>([]);
   const [reservations, setReservations] = useState<Booking[]>([]);
@@ -213,7 +215,7 @@ export default function OwnerDashboardPage({
                       {(status === 'draft' || status === 'changes_requested') && (
                         <StatusButton
                           icon={<Send size={14} />}
-                          label="Submit for review"
+                          label="Submit"
                           disabled={busyId === robot.id}
                           onClick={() => void changeStatus(robot, 'pending_review')}
                         />
@@ -221,9 +223,7 @@ export default function OwnerDashboardPage({
                       <StatusButton
                         icon={<Pencil size={14} />}
                         label="Edit"
-                        disabled
-                        title="Editing opens the listing form with this robot's details."
-                        onClick={() => undefined}
+                        onClick={() => onEditListing(robot)}
                       />
                     </div>
                   </div>

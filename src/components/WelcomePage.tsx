@@ -20,8 +20,8 @@ const features = [
   },
   {
     icon: CalendarCheck,
-    title: 'Rent Short-Term or Lease',
-    text: 'Book a quick rental for a busy week or choose a monthly lease for a dependable everyday partner.'
+    title: 'Rent Short-Term or Monthly',
+    text: 'Book a quick rental for a busy week or a full month with a dependable everyday partner.'
   },
 ];
 
@@ -141,7 +141,7 @@ function WelcomePane({ onSignIn, onSignUp }: { onSignIn: () => void; onSignUp: (
           Your Cleaning Business, Upgraded
         </h1>
         <p className="mt-3 text-sm text-ink-300 leading-relaxed max-w-2xl">
-          Lease or rent professional cleaning robots that help you finish more homes, protect your energy and grow on your terms.
+          Rent professional cleaning robots that help you finish more homes, protect your energy and grow on your terms.
         </p>
       </div>
 
